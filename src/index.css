@@ -1,0 +1,223 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg: #ffffff;
+    --text: #000000;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--text);
+    font-family: 'Vazirmatn Variable', 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Persian (Farsi) global overrides */
+  html[lang="fa"] * {
+    letter-spacing: 0 !important;
+  }
+
+  html[lang="fa"] h1,
+  html[lang="fa"] h2,
+  html[lang="fa"] h3,
+  html[lang="fa"] h4,
+  html[lang="fa"] h5,
+  html[lang="fa"] h6 {
+    line-height: 1.3 !important;
+  }
+
+  html[lang="fa"] p,
+  html[lang="fa"] span,
+  html[lang="fa"] div,
+  html[lang="fa"] label,
+  html[lang="fa"] button,
+  html[lang="fa"] input,
+  html[lang="fa"] a {
+    line-height: 1.8 !important;
+  }
+
+  /* Keep tight line-height for specific UI elements */
+  html[lang="fa"] .pill,
+  html[lang="fa"] .pill-solid {
+    line-height: 1 !important;
+  }
+}
+
+@layer components {
+  .pill {
+    border-radius: 9999px;
+    border: 1.5px solid #000000;
+    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 6px 14px;
+    color: #000000;
+    background-color: transparent;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    cursor: pointer;
+    line-height: 1;
+    white-space: nowrap;
+    direction: rtl;
+    width: auto;
+    max-width: 100%;
+  }
+
+  .pill-solid {
+    border-radius: 9999px;
+    border: 1.5px solid #000000;
+    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 6px 14px;
+    color: #FFC83D;
+    background-color: #000000;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    cursor: pointer;
+    line-height: 1;
+    white-space: nowrap;
+    direction: rtl;
+    width: auto;
+    max-width: 100%;
+  }
+}
+
+.marquee-container {
+  background: #000;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.marquee-track {
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  height: 100%;
+  animation: marquee 30s linear infinite;
+}
+
+[dir="rtl"] .marquee-track {
+  animation: marquee-rtl 30s linear infinite;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+.marquee-track span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-rtl {
+  from {
+    transform: translateX(-50%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes slideIn-rtl {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideOut-rtl {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.menu-backdrop {
+  animation: fadeIn 300ms ease-out forwards;
+}
+
+.menu-drawer {
+  animation: slideIn 350ms ease-out forwards;
+}
+
+[dir="rtl"] .menu-drawer {
+  animation: slideIn-rtl 350ms ease-out forwards;
+}
+
+.menu-drawer-closing {
+  animation: slideOut 350ms ease-in forwards;
+}
+
+[dir="rtl"] .menu-drawer-closing {
+  animation: slideOut-rtl 350ms ease-in forwards;
+}
+
+@media (max-width: 768px) {
+  .menu-drawer {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
+  .menu-drawer .top-level-item {
+    font-size: 28px;
+  }
+  .menu-backdrop {
+    display: none;
+  }
+}
