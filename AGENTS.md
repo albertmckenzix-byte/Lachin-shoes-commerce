@@ -5,10 +5,11 @@ These instructions apply to every AI coding agent and human contributor working 
 ## 1. Read shared context first
 
 At the start of each task:
-1. Read `project-memory/00-START-HERE.md`.
+1. Read this file and `project-memory/00-START-HERE.md`.
 2. Read the project overview, tech stack, and current status.
 3. Read the relevant frontend/backend/API/decision notes for the task.
-4. Inspect the current source code and tests before editing.
+4. Read `project-memory/AGENT-COLLABORATION.md`.
+5. Inspect the current source code and tests before editing.
 
 Agent-specific instructions:
 - Kilo Code: `KILO.md`
@@ -28,6 +29,9 @@ Clearly distinguish implemented, mocked, planned, and unverified behaviour.
 - API contracts are shared ownership. Never silently change an endpoint or schema.
 - Before integration work, inspect both the frontend caller and backend implementation.
 - Use explicit handoffs containing file paths, endpoint details, schemas, assumptions, and acceptance criteria.
+- Use the local `lachin-agent-bridge` MCP server for durable messages, shared tasks, activity, and decisions. See `project-memory/AGENT-COLLABORATION.md`.
+- At startup, check your inbox and shared task list. Before finishing, record activity, update task status, send any required handoff, and check the inbox again.
+- Claim a shared task before starting it. Never take over a task already claimed by the other agent without coordination.
 
 ## 4. Memory maintenance
 
@@ -64,6 +68,7 @@ Do not fabricate test results, endpoint behaviour, schema details, or deployment
 - Never trust client-side prices, totals, coupons, stock, or payment status.
 - Enforce backend permissions and validation.
 - Do not log credentials, tokens, payment details, or unnecessary personal data.
+- The local bridge database is runtime-only and must stay ignored by Git.
 
 ## 7. Completion reporting
 
