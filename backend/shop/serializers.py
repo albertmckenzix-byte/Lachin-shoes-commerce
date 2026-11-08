@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils.text import slugify
 from rest_framework import serializers
 
-from .models import Product, ProductImage, ProductSize
+from .models import Order, OrderItem, Product, ProductImage, ProductSize
 from .sizes import SIZE_TABLE_SET
 
 
@@ -275,3 +275,69 @@ class AdminProductSerializer(serializers.ModelSerializer):
         if sizes_data is not None:
             self._replace_sizes(product, sizes_data)
         return product
+
+# =============================================================================
+# Order serializers  (appended to serializers.py)
+# =============================================================================
+
+class OrderItemInputSerializer(serializers.Serializer):
+    slug     = serializers.SlugField()
+    size_us  = serializers.DecimalField(max_digits=3, decimal_places=1, coerce_to_string=False)
+    quantity = serializers.IntegerField(min_value=1, max_value=10)
+
+
+class CreateOrderSerializer(serializers.Serializer):
+    first_name      = serializers.CharField(max_length=100)
+    last_name       = serializers.CharField(max_length=100)
+    phone           = serializers.CharField(max_length=20)
+    email           = serializers.EmailField(required=False, allow_blank=True, default="")
+    country         = serializers.CharField(max_length=100, required=False, default="Iran")
+    city            = serializers.CharField(max_length=100)
+    address         = serializers.CharField()
+    postal_code     = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
+    delivery_method = serializers.ChoiceField(choices=["standard", "express"], default="standard")
+    coupon_code     = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
+    note            = serializers.CharField(required=False, allow_blank=True, default="")
+    items           = OrderItemInputSerializer(many=True)
+
+    def validate_items(self, value):
+        if len(value) == 0:
+            raise serializers.ValidationError("حداقل یک کالا الزامی است.")
+        if len(value) > 10:
+            raise serializers.ValidationError("حداکثر ۱۰ قلم در هر سفارش مجاز است.")
+        return value
+
+
+class OrderPublicSerializer(serializers.ModelSerializer):
+    """Minimal response after a successful order creation."""
+    shippingFee   = serializers.IntegerField(source="shipping_fee")
+    discountTotal = serializers.IntegerField(source="discount_total")
+    paymentStatus = serializers.CharField(source="payment_status")
+    token         = serializers.UUIDField(source="public_token")
+
+    class Meta:
+        model  = Order
+        fields = ["number", "total", "subtotal", "shippingFee", "discountTotal",
+                  "status", "paymentStatus", "token"]
+
+
+class OrderItemPublicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = OrderItem
+        fields = ["product_name", "product_slug", "size_us", "size_eu", "quantity", "line_total"]
+
+
+class OrderDetailPublicSerializer(serializers.ModelSerializer):
+    """Safe public view — no address / phone."""
+    paymentStatus = serializers.CharField(source="payment_status")
+    createdAt     = serializers.DateTimeField(source="created_at")
+    items         = OrderItemPublicSerializer(many=True, read_only=True)
+
+    class Meta:
+        model  = Order
+        fields = ["number", "status", "paymentStatus", "total", "createdAt", "items"]
+
+
+class CouponCheckSerializer(serializers.Serializer):
+    code     = serializers.CharField(max_length=50)
+    subtotal = serializers.IntegerField(min_value=0)

@@ -8,10 +8,10 @@ from rest_framework.authtoken.models import Token
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
+from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from rest_framework.views import APIView
 
-from .models import Product, ProductImage
+from .models import Coupon, Order, Product, ProductImage
 from .permissions import IsStaffUser
 from .serializers import (
     AdminLoginSerializer,
@@ -19,8 +19,13 @@ from .serializers import (
     AdminProductImageSerializer,
     AdminProductListSerializer,
     AdminProductSerializer,
+    CouponCheckSerializer,
+    CreateOrderSerializer,
+    OrderDetailPublicSerializer,
+    OrderPublicSerializer,
     PublicProductSerializer,
 )
+from .services.orders import OrderError, create_order
 from .sizes import SIZE_TABLE
 
 LOGIN_ERROR = 'نام کاربری یا رمز عبور اشتباه است'
@@ -254,3 +259,109 @@ class AdminProductImageReorderView(APIView):
                 images, many=True, context={'request': request}
             ).data
         )
+
+
+# =============================================================================
+# Order throttles
+# =============================================================================
+
+class OrderCreateThrottle(AnonRateThrottle):
+    """10 order requests per minute per IP."""
+    rate = "10/minute"
+    scope = "order_create"
+
+
+class CouponCheckThrottle(AnonRateThrottle):
+    """20 coupon checks per minute per IP."""
+    rate = "20/minute"
+    scope = "coupon_check"
+
+
+# =============================================================================
+# Order views
+# =============================================================================
+
+class OrderCreateView(APIView):
+    """
+    POST /api/orders/
+    AllowAny, no CSRF (authentication_classes=[]).
+    Validates payload, calls create_order(), returns 201 on success.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [OrderCreateThrottle]
+
+    def post(self, request):
+        serializer = CreateOrderSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "اطلاعات وارد شده معتبر نیست.",
+                 "code": "validation",
+                 "fields": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            order = create_order(serializer.validated_data, actor="customer")
+        except OrderError as exc:
+            return Response(
+                {"detail": str(exc), "code": exc.code, "fields": exc.fields},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            OrderPublicSerializer(order).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class OrderDetailPublicView(APIView):
+    """
+    GET /api/orders/<number>/?token=<public_token>
+    Returns limited public view only when the token matches the order.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, number):
+        token = request.query_params.get("token", "")
+        order = get_object_or_404(Order, number=number)
+        if str(order.public_token) != str(token):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        return Response(
+            OrderDetailPublicSerializer(order).data
+        )
+
+
+class CouponCheckView(APIView):
+    """
+    POST /api/coupons/check/
+    { code, subtotal } -> { valid, percent, discount }
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [CouponCheckThrottle]
+
+    def post(self, request):
+        serializer = CouponCheckSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "داده‌های ارسالی معتبر نیستند.", "code": "validation",
+                 "fields": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        code     = serializer.validated_data["code"].strip().upper()
+        subtotal = serializer.validated_data["subtotal"]
+
+        from django.utils import timezone as tz
+        now = tz.now()
+        try:
+            coupon = Coupon.objects.get(code=code, is_active=True)
+        except Coupon.DoesNotExist:
+            return Response({"valid": False, "percent": 0, "discount": 0})
+
+        if coupon.expires_at and coupon.expires_at < now:
+            return Response({"valid": False, "percent": 0, "discount": 0})
+        if coupon.usage_limit is not None and coupon.used_count >= coupon.usage_limit:
+            return Response({"valid": False, "percent": 0, "discount": 0})
+
+        discount = min(subtotal, (subtotal * coupon.percent) // 100)
+        return Response({"valid": True, "percent": coupon.percent, "discount": discount})

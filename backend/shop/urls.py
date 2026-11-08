@@ -10,6 +10,9 @@ from .views import (
     AdminProductImageUploadView,
     AdminProductListCreateView,
     AdminSizeTableView,
+    CouponCheckView,
+    OrderCreateView,
+    OrderDetailPublicView,
     ProductDetailView,
     ProductListView,
 )
@@ -26,4 +29,8 @@ urlpatterns = [
     path('admin/products/<int:pk>/images/reorder/', AdminProductImageReorderView.as_view(), name='admin-product-images-reorder'),
     path('admin/products/<int:pk>/images/<int:image_id>/', AdminProductImageDeleteView.as_view(), name='admin-product-image-delete'),
     path('admin/sizes/', AdminSizeTableView.as_view(), name='admin-size-table'),
+    # Order endpoints
+    path('orders/', OrderCreateView.as_view(), name='order-create'),
+    path('orders/<int:number>/', OrderDetailPublicView.as_view(), name='order-detail'),
+    path('coupons/check/', CouponCheckView.as_view(), name='coupon-check'),
 ]

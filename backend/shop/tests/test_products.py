@@ -2,7 +2,7 @@ from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient, APITestCase
 
-from .models import Product, ProductSize
+from shop.models import Product, ProductSize
 
 STAFF_PASSWORD = 'staff-pass-123'
 USER_PASSWORD = 'user-pass-123'

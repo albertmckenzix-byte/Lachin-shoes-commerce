@@ -156,5 +156,7 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '100/hour',
         'login': '10/minute',
+        'order_create': '10/minute',
+        'coupon_check': '20/minute',
     },
 }
