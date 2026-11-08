@@ -8,6 +8,10 @@ import AdminLoginPage from './admin/AdminLoginPage'
 import AdminLayout from './admin/AdminLayout'
 import ProductsList from './admin/ProductsList'
 import ProductEdit from './admin/ProductEdit'
+import OrdersList from './admin/OrdersList'
+import OrderCreate from './admin/OrderCreate'
+import CustomersList from './admin/CustomersList'
+import Dashboard from './admin/Dashboard'
 import Home from './pages/Home'
 import AllProducts from './pages/AllProducts'
 import About from './pages/About'
@@ -27,30 +31,34 @@ function App() {
     <ProductsProvider>
       <CartProvider>
         <MenuProvider>
-        <ScrollToTop />
-        <ErrorBoundary>
-          <Routes>
-            <Route element={<MainLayout />}>
-              <Route path="/" element={<Home />} />
-              <Route path="/all-products" element={<AllProducts />} />
-              <Route path="/about" element={<About />} />
-              <Route path="/checkout" element={<Checkout />} />
-              <Route path="/product/:slug" element={<ProductDetail />} />
-              <Route path="/foot-size-finder" element={<FootSizeFinderTest />} />
-            </Route>
-            <Route element={<AuthProvider><Outlet /></AuthProvider>}>
-              <Route path="/admin/login" element={<AdminLoginPage />} />
-              <Route element={<AdminGate />}>
-                <Route element={<AdminLayout />}>
-                  <Route path="/admin" element={<Navigate to="/admin/products" replace />} />
-                  <Route path="/admin/products" element={<ProductsList />} />
-                  <Route path="/admin/products/new" element={<ProductEdit />} />
-                  <Route path="/admin/products/:id" element={<ProductEdit />} />
+          <ScrollToTop />
+          <ErrorBoundary>
+            <Routes>
+              <Route element={<MainLayout />}>
+                <Route path="/" element={<Home />} />
+                <Route path="/all-products" element={<AllProducts />} />
+                <Route path="/about" element={<About />} />
+                <Route path="/checkout" element={<Checkout />} />
+                <Route path="/product/:slug" element={<ProductDetail />} />
+                <Route path="/foot-size-finder" element={<FootSizeFinderTest />} />
+              </Route>
+              <Route element={<AuthProvider><Outlet /></AuthProvider>}>
+                <Route path="/admin/login" element={<AdminLoginPage />} />
+                <Route element={<AdminGate />}>
+                  <Route element={<AdminLayout />}>
+                    <Route path="/admin" element={<Navigate to="/admin/dashboard" replace />} />
+                    <Route path="/admin/dashboard" element={<Dashboard />} />
+                    <Route path="/admin/products" element={<ProductsList />} />
+                    <Route path="/admin/products/new" element={<ProductEdit />} />
+                    <Route path="/admin/products/:id" element={<ProductEdit />} />
+                    <Route path="/admin/orders" element={<OrdersList />} />
+                    <Route path="/admin/orders/new" element={<OrderCreate />} />
+                    <Route path="/admin/customers" element={<CustomersList />} />
+                  </Route>
                 </Route>
               </Route>
-            </Route>
-          </Routes>
-        </ErrorBoundary>
+            </Routes>
+          </ErrorBoundary>
         </MenuProvider>
       </CartProvider>
     </ProductsProvider>

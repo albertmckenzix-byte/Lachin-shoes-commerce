@@ -1,5 +1,16 @@
 from django.db import models
 
+# Order-system models live in a separate file for readability.
+# Importing here makes them part of the 'shop' app label.
+from shop.orders_models import (  # noqa: F401  – re-exported for migrations
+    StoreSettings,
+    Coupon,
+    Customer,
+    Order,
+    OrderItem,
+    OrderStatusLog,
+)
+
 
 class Product(models.Model):
     BRAND_CHOICES = [

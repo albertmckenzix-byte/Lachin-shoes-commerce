@@ -18,9 +18,9 @@ export default function PromoBanner() {
   const line2 = parts[1] || ''
 
   return (
-    <section className="relative z-10 w-full overflow-hidden">
-      <div
-        className="relative w-full overflow-hidden h-[560px] md:h-[clamp(620px,85vh,900px)] bg-[#E9CBA6]"
+    <>
+      <section
+        className="relative z-10 w-full overflow-hidden h-[560px] md:h-[clamp(620px,85vh,900px)] bg-[#E9CBA6]"
         style={{ clipPath: 'inset(0)' }}
       >
         <img
@@ -45,17 +45,17 @@ export default function PromoBanner() {
         </div>
 
         {/* Desktop: absolute bottom-left card */}
-        <div className="hidden md:block absolute end-[110px] bottom-[56px] z-30">
+        <div className="hidden md:block absolute end-[110px] bottom-[56px] z-40">
           <FeaturedProductCard product={classicComfort} variant="light" />
         </div>
 
         {/* Mobile: static full-width card below content */}
-        <div className="md:hidden ps-5 pe-5 mt-[300px] pb-[20px]">
+        <div className="md:hidden ps-5 pe-5 mt-[300px] pb-[20px] relative z-40">
           <FeaturedProductCard product={classicComfort} variant="light" />
         </div>
-      </div>
+      </section>
 
       <Marquee text={t('sustainability.headline')} />
-    </section>
+    </>
   )
 }

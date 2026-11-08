@@ -18,10 +18,10 @@ export default function ProductDetail() {
 
   useEffect(() => {
     if (product) {
-      document.title = `${product.name || t(product.nameKey)} | Lachin`
+      document.title = `${product.name || t(product.nameKey)} | Lachin Shoes`
     }
     return () => {
-      document.title = 'Lachin'
+      document.title = 'Lachin Shoes'
     }
   }, [product, t, i18n.language])
 

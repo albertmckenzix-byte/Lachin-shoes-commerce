@@ -42,12 +42,12 @@ export default function Hero() {
       </div>
 
       {/* Desktop: absolute bottom-right card */}
-      <div className="hidden md:flex absolute end-[110px] bottom-[66px] z-30">
+      <div className="hidden md:flex absolute end-[110px] bottom-[66px] z-40">
         <FeaturedProductCard variant="light" />
       </div>
 
       {/* Mobile: static full-width card below content */}
-      <div className="md:hidden ps-5 pe-5 mt-[30px] pb-[20px]">
+      <div className="md:hidden ps-5 pe-5 mt-[30px] pb-[20px] relative z-40">
         <FeaturedProductCard variant="light" />
       </div>
     </section>
