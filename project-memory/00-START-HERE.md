@@ -8,13 +8,17 @@
 ## Start here
 
 1. Read the root `AGENTS.md`.
-2. Read [Project Overview](01-PROJECT-OVERVIEW.md), [Tech Stack](02-TECH-STACK.md), and [Current Status](development/CURRENT-STATUS.md).
-3. Before changing a feature, read its relevant frontend/backend notes and the [API contracts](integration/API-CONTRACTS.md).
-4. Inspect the current code. These notes are context, not a substitute for source code.
-5. After meaningful work, update the relevant memory files in the same change/commit where practical.
+2. Read [Agent Collaboration Protocol](AGENT-COLLABORATION.md).
+3. Read [Project Overview](01-PROJECT-OVERVIEW.md), [Tech Stack](02-TECH-STACK.md), and [Current Status](development/CURRENT-STATUS.md).
+4. Before changing a feature, read its relevant frontend/backend notes and the [API contracts](integration/API-CONTRACTS.md).
+5. Connect to the local `lachin-agent-bridge` MCP server and check your inbox and shared task list.
+6. Inspect the current code. These notes are context, not a substitute for source code.
+7. After meaningful work, update the relevant memory files in the same branch/change where practical and record the work in the MCP activity feed.
 
 ## Memory map
 
+- [Agent collaboration](AGENT-COLLABORATION.md)
+- [Local MCP bridge tools](agent-bridge/README.md)
 - [Project overview](01-PROJECT-OVERVIEW.md)
 - [Technology stack](02-TECH-STACK.md)
 - [System architecture](03-SYSTEM-ARCHITECTURE.md)
