@@ -148,7 +148,7 @@ function OrderDetailPanel({ order, onStatusAdvance, onCancel }) {
                   {item.name}
                 </bdi>
                 <div className="text-xs text-[#6B6B6B]">
-                  {item.size} · {formatNumber(item.qty)} عدد
+                  US {item.size} · {formatNumber(item.qty)} عدد
                 </div>
               </div>
               <div className="flex-shrink-0 text-sm text-[#111]">

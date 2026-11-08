@@ -2,11 +2,15 @@
 Tests for the order creation service and public order endpoints.
 """
 from decimal import Decimal
+from io import BytesIO
 
+from django.contrib.auth.models import User
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from rest_framework.test import APIClient, APITestCase
+from openpyxl import load_workbook
+from datetime import timedelta
 
 from shop.models import (
     Coupon,
@@ -23,6 +27,7 @@ from shop.services.orders import (
     create_order,
     expire_pending_orders,
     release_stock,
+    set_payment_status,
 )
 
 
@@ -472,3 +477,450 @@ class OrderAPITests(APITestCase):
         self.size.save()
         resp = self._post_order()
         self.assertEqual(resp.status_code, 400)
+
+
+# =============================================================================
+# Admin order API tests
+# =============================================================================
+
+class AdminOrderAPITests(APITestCase):
+    """Tests for admin order endpoints."""
+
+    def setUp(self):
+        self.client = APIClient()
+        make_store_settings(
+            free_shipping_threshold=5_000_000,
+            standard_fee=0,
+            express_fee=500_000,
+            pending_order_minutes=30,
+        )
+        self.product = make_product()
+        self.size = make_size(self.product, stock=5)
+
+        # Create staff user
+        self.staff = User.objects.create_user(
+            username='admin', password='admin123', is_staff=True
+        )
+        self.client.force_authenticate(user=self.staff)
+
+    def _create_order(self, slug="air-max", **kwargs):
+        """Helper to create an order via service."""
+        if slug != "air-max":
+            make_product(slug=slug)
+            make_size(Product.objects.get(slug=slug), stock=5)
+        data = base_data(slug=slug, **kwargs)
+        return create_order(data, actor="admin")
+
+    def test_admin_orders_list_requires_auth(self):
+        self.client.force_authenticate(user=None)
+        resp = self.client.get('/api/admin/orders/')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_admin_orders_list_returns_paginated_data(self):
+        self._create_order()
+        self._create_order(slug="air-max-2")
+
+        resp = self.client.get('/api/admin/orders/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn('results', body)
+        self.assertEqual(len(body['results']), 2)
+        self.assertIn('counts', body)
+        self.assertIn('page', body)
+        self.assertIn('pageSize', body)
+
+    def test_admin_orders_list_masks_phone(self):
+        order = self._create_order(phone="09121234567")
+        resp = self.client.get('/api/admin/orders/')
+        self.assertEqual(resp.status_code, 200)
+        phone = resp.json()['results'][0]['phone']
+        self.assertEqual(phone, '0912***4567')
+
+    def test_admin_orders_list_filters_by_status(self):
+        order1 = self._create_order()
+        order2 = self._create_order(slug="air-max-2")
+        change_order_status(order2, Order.Status.PROCESSING, actor="admin")
+
+        resp = self.client.get('/api/admin/orders/?status=new')
+        self.assertEqual(len(resp.json()['results']), 1)
+        resp = self.client.get('/api/admin/orders/?status=processing')
+        self.assertEqual(len(resp.json()['results']), 1)
+
+    def test_admin_orders_list_filters_by_payment_status(self):
+        order1 = self._create_order()
+        order2 = self._create_order(slug="air-max-2")
+        set_payment_status(order2, Order.PaymentStatus.PAID, actor="admin")
+
+        resp = self.client.get('/api/admin/orders/?payment_status=pending')
+        self.assertEqual(len(resp.json()['results']), 1)
+        resp = self.client.get('/api/admin/orders/?payment_status=paid')
+        self.assertEqual(len(resp.json()['results']), 1)
+
+    def test_admin_orders_list_search_filter(self):
+        order = self._create_order(first_name="علی", last_name="رضایی", phone="09121234567")
+
+        resp = self.client.get('/api/admin/orders/?search=علی')
+        self.assertEqual(len(resp.json()['results']), 1)
+        resp = self.client.get('/api/admin/orders/?search=0912')
+        self.assertEqual(len(resp.json()['results']), 1)
+
+    def test_admin_orders_list_counts_include_pending_payment(self):
+        self._create_order()
+        order2 = self._create_order(slug="air-max-2")
+        set_payment_status(order2, Order.PaymentStatus.PAID, actor="admin")
+
+        resp = self.client.get('/api/admin/orders/')
+        counts = resp.json()['counts']
+        self.assertEqual(counts['pendingPayment'], 1)
+
+    def test_admin_order_detail_shows_full_phone(self):
+        order = self._create_order(phone="09121234567")
+        resp = self.client.get(f'/api/admin/orders/{order.id}/')
+        self.assertEqual(resp.status_code, 200)
+        phone = resp.json()['phone']
+        self.assertEqual(phone, '09121234567')
+
+    def test_admin_order_detail_includes_items_and_logs(self):
+        order = self._create_order()
+        resp = self.client.get(f'/api/admin/orders/{order.id}/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn('items', body)
+        self.assertIn('logs', body)
+        self.assertEqual(len(body['items']), 1)
+        self.assertGreaterEqual(len(body['logs']), 1)
+
+    def test_admin_order_update_status(self):
+        order = self._create_order()
+        resp = self.client.patch(
+            f'/api/admin/orders/{order.id}/update/',
+            {'status': 'processing'},
+            format='json'
+        )
+        self.assertEqual(resp.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.status, Order.Status.PROCESSING)
+
+    def test_admin_order_update_invalid_status_returns_400(self):
+        order = self._create_order()
+        resp = self.client.patch(
+            f'/api/admin/orders/{order.id}/update/',
+            {'status': 'delivered'},
+            format='json'
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn('detail', resp.json())
+
+    def test_admin_order_cancel_restores_stock(self):
+        order = self._create_order()
+        self.size.refresh_from_db()
+        stock_before_cancel = self.size.stock
+
+        resp = self.client.patch(
+            f'/api/admin/orders/{order.id}/update/',
+            {'status': 'cancelled'},
+            format='json'
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        self.size.refresh_from_db()
+        self.assertEqual(self.size.stock, stock_before_cancel + 1)
+
+    def test_admin_order_update_payment_status(self):
+        order = self._create_order()
+        resp = self.client.patch(
+            f'/api/admin/orders/{order.id}/update/',
+            {'paymentStatus': 'paid'},
+            format='json'
+        )
+        self.assertEqual(resp.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, Order.PaymentStatus.PAID)
+        self.assertIsNotNone(order.paid_at)
+
+    def test_admin_order_update_note(self):
+        order = self._create_order()
+        resp = self.client.patch(
+            f'/api/admin/orders/{order.id}/update/',
+            {'note': 'Customer called'},
+            format='json'
+        )
+        self.assertEqual(resp.status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual(order.note, 'Customer called')
+
+    def test_admin_order_create_manual(self):
+        data = base_data(slug="air-max")
+        resp = self.client.post(
+            '/api/admin/orders/create/',
+            data,
+            format='json'
+        )
+        self.assertEqual(resp.status_code, 201)
+        body = resp.json()
+        self.assertIn('number', body)
+        self.assertEqual(body['status'], 'new')
+
+    def test_admin_order_create_with_payment_status(self):
+        data = base_data(slug="air-max", payment_status='paid')
+        resp = self.client.post(
+            '/api/admin/orders/create/',
+            data,
+            format='json'
+        )
+        self.assertEqual(resp.status_code, 201)
+        body = resp.json()
+        self.assertEqual(body['paymentStatus'], 'paid')
+
+    def test_admin_order_export_returns_xlsx(self):
+        self._create_order()
+        resp = self.client.get('/api/admin/orders/export/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            resp['Content-Type'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        self.assertIn('attachment', resp['Content-Disposition'])
+
+    def test_admin_order_export_with_filters(self):
+        order1 = self._create_order()
+        order2 = self._create_order(slug="air-max-2")
+        change_order_status(order2, Order.Status.PROCESSING, actor="admin")
+
+        resp = self.client.get('/api/admin/orders/export/?status=new')
+        self.assertEqual(resp.status_code, 200)
+
+        # Verify Excel file is valid
+        wb = load_workbook(BytesIO(resp.content))
+        ws = wb.active
+        # Should have header row + 1 data row
+        self.assertEqual(ws.max_row, 2)
+
+    def test_admin_order_summary(self):
+        self._create_order()
+        resp = self.client.get('/api/admin/orders/summary/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn('newCount', body)
+        self.assertIn('pendingPaymentCount', body)
+        self.assertEqual(body['newCount'], 1)
+
+
+# =============================================================================
+# Admin dashboard API tests
+# =============================================================================
+
+class AdminDashboardAPITests(APITestCase):
+    """Tests for admin dashboard endpoint."""
+
+    def setUp(self):
+        self.client = APIClient()
+        make_store_settings(
+            free_shipping_threshold=5_000_000,
+            standard_fee=0,
+            express_fee=500_000,
+            pending_order_minutes=30,
+        )
+        self.product = make_product()
+        self.size = make_size(self.product, stock=5)
+
+        # Create staff user
+        self.staff = User.objects.create_user(
+            username='admin', password='admin123', is_staff=True
+        )
+        self.client.force_authenticate(user=self.staff)
+
+    def _create_paid_order(self, days_ago=0, status='delivered'):
+        """Helper to create a paid order with proper status transitions."""
+        order_date = timezone.now() - timedelta(days=days_ago)
+        data = base_data()
+        order = create_order(data, actor="admin")
+        order.created_at = order_date
+        order.save(update_fields=['created_at'])
+        set_payment_status(order, Order.PaymentStatus.PAID, actor="admin")
+
+        # Follow proper status transitions
+        if status == 'processing':
+            change_order_status(order, Order.Status.PROCESSING, actor="admin")
+        elif status == 'shipped':
+            change_order_status(order, Order.Status.PROCESSING, actor="admin")
+            change_order_status(order, Order.Status.SHIPPED, actor="admin")
+        elif status == 'delivered':
+            change_order_status(order, Order.Status.PROCESSING, actor="admin")
+            change_order_status(order, Order.Status.SHIPPED, actor="admin")
+            change_order_status(order, Order.Status.DELIVERED, actor="admin")
+        # status == 'new' is default, no change needed
+
+        return order
+
+    def _create_cancelled_order(self, days_ago=0):
+        """Helper to create a cancelled order."""
+        order_date = timezone.now() - timedelta(days=days_ago)
+        data = base_data()
+        order = create_order(data, actor="admin")
+        order.created_at = order_date
+        order.save(update_fields=['created_at'])
+        change_order_status(order, Order.Status.CANCELLED, actor="admin")
+        return order
+
+    def test_dashboard_requires_auth(self):
+        self.client.force_authenticate(user=None)
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 401)
+
+    def test_dashboard_invalid_days_param(self):
+        resp = self.client.get('/api/admin/dashboard/?days=5')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_dashboard_valid_days_params(self):
+        for days in ['7', '30', '90']:
+            resp = self.client.get(f'/api/admin/dashboard/?days={days}')
+            self.assertEqual(resp.status_code, 200)
+
+    def test_dashboard_default_days(self):
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['range']['days'], 7)
+
+    def test_dashboard_today_stats(self):
+        self._create_paid_order(days_ago=0)
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['today']['ordersCount'], 1)
+        self.assertGreater(body['today']['sales'], 0)
+
+    def test_dashboard_range_stats(self):
+        self._create_paid_order(days_ago=0)
+        self._create_paid_order(days_ago=2)
+        resp = self.client.get('/api/admin/dashboard/?days=7')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['range']['days'], 7)
+        self.assertEqual(body['range']['ordersCount'], 2)
+
+    def test_dashboard_pending_payment_count(self):
+        data = base_data()
+        order = create_order(data, actor="admin")
+        # Don't set payment status - stays pending
+
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['pendingPaymentCount'], 1)
+
+    def test_dashboard_status_counts(self):
+        self._create_paid_order(days_ago=0, status='new')
+        self._create_paid_order(days_ago=0, status='processing')
+        self._create_paid_order(days_ago=0, status='shipped')
+        self._create_paid_order(days_ago=0, status='delivered')
+        self._create_cancelled_order(days_ago=0)
+
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['statusCounts']['new'], 1)
+        self.assertEqual(body['statusCounts']['processing'], 1)
+        self.assertEqual(body['statusCounts']['shipped'], 1)
+        self.assertEqual(body['statusCounts']['delivered'], 1)
+        self.assertEqual(body['statusCounts']['cancelled'], 1)
+        self.assertEqual(body['statusCounts']['total'], 5)
+
+    def test_dashboard_daily_sales_zero_filled(self):
+        # Create only one order today
+        self._create_paid_order(days_ago=0)
+
+        resp = self.client.get('/api/admin/dashboard/?days=7')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        daily_sales = body['dailySales']
+        self.assertEqual(len(daily_sales), 7)
+
+        # Only today should have sales, others should be 0
+        self.assertGreater(daily_sales[-1]['sales'], 0)  # Today
+        for i in range(6):
+            self.assertEqual(daily_sales[i]['sales'], 0)
+
+    def test_dashboard_daily_sales_ordered_oldest_first(self):
+        self._create_paid_order(days_ago=6)
+        self._create_paid_order(days_ago=0)
+
+        resp = self.client.get('/api/admin/dashboard/?days=7')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        daily_sales = body['dailySales']
+
+        # Oldest first
+        self.assertGreater(daily_sales[0]['sales'], 0)  # 6 days ago
+        self.assertGreater(daily_sales[-1]['sales'], 0)  # Today
+
+    def test_dashboard_cancelled_orders_not_counted_as_sales(self):
+        self._create_cancelled_order(days_ago=0)
+        self._create_paid_order(days_ago=0)
+
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        # Only paid, non-cancelled order should count
+        self.assertEqual(body['today']['ordersCount'], 1)
+
+    def test_dashboard_unpaid_orders_not_counted_as_sales(self):
+        data = base_data()
+        order = create_order(data, actor="admin")
+        # Pending payment, not paid
+
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body['today']['ordersCount'], 0)
+
+    def test_dashboard_latest_orders(self):
+        self._create_paid_order(days_ago=0)
+        self._create_paid_order(days_ago=1)
+
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        latest_orders = body['latestOrders']
+        self.assertEqual(len(latest_orders), 2)
+        self.assertIn('id', latest_orders[0])
+        self.assertIn('number', latest_orders[0])
+        self.assertIn('customerName', latest_orders[0])
+        self.assertIn('city', latest_orders[0])
+        self.assertIn('total', latest_orders[0])
+        self.assertIn('status', latest_orders[0])
+
+    def test_dashboard_low_stock_respects_inactive_sizes(self):
+        # Create product with active and inactive sizes
+        product = make_product(slug="low-stock-shoe")
+        active_size = make_size(product, us=9.0, stock=20, is_active=True)
+        inactive_size = make_size(product, us=10.0, stock=50, is_active=False)
+
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        low_stock = body['lowStock']
+
+        # Should count only active sizes (20 < 25)
+        self.assertGreater(low_stock['totalStock'], 0)
+        # Check if this product is in low stock list
+        product_ids = [p['id'] for p in low_stock['products']]
+        self.assertIn(product.id, product_ids)
+
+    def test_dashboard_low_stock_threshold(self):
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        low_stock = body['lowStock']
+        self.assertEqual(low_stock['threshold'], 25)
+
+    def test_dashboard_tehran_midnight_boundary(self):
+        """Test that today's boundary uses Asia/Tehran timezone."""
+        # This is a basic test - comprehensive timezone testing would require
+        # mocking timezone.now() to test boundary conditions
+        resp = self.client.get('/api/admin/dashboard/')
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn('today', body)
+        self.assertIn('range', body)

@@ -54,7 +54,7 @@ export default function PurchasePanel({ product }) {
       setShowSizeError(true)
       return
     }
-    const ok = addItem(product, { size: selectedSize.toString(), quantity })
+    const ok = addItem(product, { sizeUs: selectedSize, quantity })
     if (ok === false) {
       setStockError('موجودی این سایز کافی نیست')
       return
@@ -68,7 +68,7 @@ export default function PurchasePanel({ product }) {
       setShowSizeError(true)
       return
     }
-    const ok = addItem(product, { size: selectedSize.toString(), quantity })
+    const ok = addItem(product, { sizeUs: selectedSize, quantity })
     if (ok === false) {
       setStockError('موجودی این سایز کافی نیست')
       return

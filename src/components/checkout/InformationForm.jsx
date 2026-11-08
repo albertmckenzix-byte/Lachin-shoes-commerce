@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
 
-export default function InformationForm({ formData, setFormData, errors, setErrors, setSubmitted }) {
+export default function InformationForm({ formData, setFormData, errors, setErrors }) {
   const { t } = useTranslation()
   const [touched, setTouched] = useState({})
 
@@ -39,19 +39,21 @@ export default function InformationForm({ formData, setFormData, errors, setErro
         }
         break
       case 'email':
-        if (!value.trim()) {
-          setErrors((prev) => ({ ...prev, [field]: t('checkout.requiredField') }))
-          return false
-        }
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
+        if (value.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
           setErrors((prev) => ({ ...prev, [field]: t('checkout.invalidEmail') }))
           return false
         }
         break
       case 'country':
-      case 'zipCode':
         if (!value.trim()) {
           setErrors((prev) => ({ ...prev, [field]: t('checkout.requiredField') }))
+          return false
+        }
+        break
+      case 'postalCode':
+        // Optional field, validate only if provided
+        if (value.trim() && !/^\d{10}$/.test(value)) {
+          setErrors((prev) => ({ ...prev, [field]: t('checkout.invalidPostalCode') }))
           return false
         }
         break
@@ -67,21 +69,27 @@ export default function InformationForm({ formData, setFormData, errors, setErro
 
   const validateAll = () => {
     let valid = true
-    const fields = ['firstName', 'lastName', 'phone', 'email', 'country', 'city', 'address', 'zipCode', 'agreeDataProcessing']
+    const fields = ['firstName', 'lastName', 'phone', 'country', 'city', 'address', 'agreeDataProcessing']
     fields.forEach((field) => {
       setTouched((prev) => ({ ...prev, [field]: true }))
       if (!validateField(field, formData[field])) {
         valid = false
       }
     })
-    return valid
-  }
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (validateAll()) {
-      setSubmitted(true)
+    // Validate optional fields only if they have values
+    if (formData.email.trim()) {
+      setTouched((prev) => ({ ...prev, email: true }))
+      if (!validateField('email', formData.email)) {
+        valid = false
+      }
     }
+    if (formData.postalCode.trim()) {
+      setTouched((prev) => ({ ...prev, postalCode: true }))
+      if (!validateField('postalCode', formData.postalCode)) {
+        valid = false
+      }
+    }
+    return valid
   }
 
   const Input = ({ id, label, type = 'text', value, onChange, onBlur, placeholder, inputMode, dir = 'rtl', error, errorId, ...props }) => (
@@ -127,7 +135,7 @@ export default function InformationForm({ formData, setFormData, errors, setErro
   )
 
   return (
-    <form onSubmit={handleSubmit} noValidate>
+    <div>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-[24px] font-normal text-black leading-[1.3]">{t('checkout.information')}</h2>
         <Trans i18nKey="checkout.loginPrompt" components={{ 1: <a href="#" className="underline text-black hover:text-black" /> }}>
@@ -225,15 +233,15 @@ export default function InformationForm({ formData, setFormData, errors, setErro
           />
         </div>
         <Input
-          id="zipCode"
+          id="postalCode"
           label={t('checkout.zipPostalCode')}
-          value={formData.zipCode}
-          onChange={(e) => handleChange('zipCode', e.target.value)}
+          value={formData.postalCode}
+          onChange={(e) => handleChange('postalCode', e.target.value)}
           onBlur={handleBlur}
           placeholder={t('checkout.zipPostalCode')}
           dir="ltr"
-          error={touched.zipCode ? errors.zipCode : ''}
-          errorId="zipCode-error"
+          error={touched.postalCode ? errors.postalCode : ''}
+          errorId="postalCode-error"
         />
       </div>
 
@@ -256,6 +264,6 @@ export default function InformationForm({ formData, setFormData, errors, setErro
           <p id="agreeDataProcessing-error" className="absolute bottom-[-18px] start-0 text-[11px] text-red-600" role="alert">{errors.agreeDataProcessing}</p>
         )}
       </div>
-    </form>
+    </div>
   )
 }

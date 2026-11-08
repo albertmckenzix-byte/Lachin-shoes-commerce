@@ -127,17 +127,17 @@ export default function OrderCreate() {
   }, [selectedCustomer, items.length, shippingMethod, address, discount, goodsTotal])
 
   // Add item
-  const handleAddItem = (productId, size) => {
-    const product = products.find((p) => p.id === productId)
+  const handleAddItem = (slug, sizeUs) => {
+    const product = products.find((p) => p.slug === slug)
     if (!product) return
 
     const sizeEntry = Array.isArray(product.sizes)
-      ? product.sizes.find((s) => Number(s.us) === Number(size))
+      ? product.sizes.find((s) => Number(s.us) === Number(sizeUs))
       : null
     if (!sizeEntry || !sizeEntry.available || sizeEntry.stock <= 0) return
 
     const existingIdx = items.findIndex(
-      (i) => i.productId === productId && i.size === size
+      (i) => i.slug === slug && i.sizeUs === sizeUs
     )
     if (existingIdx >= 0) {
       setItems((prev) => {
@@ -151,9 +151,9 @@ export default function OrderCreate() {
       setItems((prev) => [
         ...prev,
         {
-          productId,
+          slug,
           name: product.name,
-          size,
+          sizeUs,
           quantity: 1,
           price,
           maxStock: sizeEntry.stock,
@@ -185,13 +185,13 @@ export default function OrderCreate() {
 
     // Check stock again before save
     for (const item of items) {
-      const product = products.find((p) => p.id === item.productId)
+      const product = products.find((p) => p.slug === item.slug)
       if (!product) continue
       const sizeEntry = Array.isArray(product.sizes)
-        ? product.sizes.find((s) => Number(s.us) === Number(item.size))
+        ? product.sizes.find((s) => Number(s.us) === Number(item.sizeUs))
         : null
       if (!sizeEntry || sizeEntry.stock < item.quantity) {
-        setErrors({ items: `موجودی ${item.name} در سایز ${item.size} کافی نیست` })
+        setErrors({ items: `موجودی ${item.name} در سایز ${item.sizeUs} کافی نیست` })
         setSaving(false)
         return
       }
@@ -207,9 +207,9 @@ export default function OrderCreate() {
         phone: selectedCustomer.phone,
       },
       items: items.map((i) => ({
-        productId: i.productId,
+        slug: i.slug,
         name: i.name,
-        size: `US ${i.size}`,
+        size: `US ${i.sizeUs}`,
         qty: i.quantity,
         price: i.price * i.quantity,
       })),
@@ -332,8 +332,8 @@ export default function OrderCreate() {
               <select
                 value=""
                 onChange={(e) => {
-                  const [productId, size] = e.target.value.split(':')
-                  if (productId && size) handleAddItem(Number(productId), size)
+                  const [slug, sizeUs] = e.target.value.split(':')
+                  if (slug && sizeUs) handleAddItem(slug, sizeUs)
                   e.target.value = ''
                 }}
                 className={`${inputClass} flex-1`}
@@ -344,9 +344,9 @@ export default function OrderCreate() {
                   const sizes = getAvailableSizes(p)
                   if (sizes.length === 0) return null
                   return (
-                    <optgroup key={p.id} label={p.name}>
+                    <optgroup key={p.slug} label={p.name}>
                       {sizes.map((s) => (
-                        <option key={`${p.id}:${s.us}`} value={`${p.id}:${s.us}`}>
+                        <option key={`${p.slug}:${s.us}`} value={`${p.slug}:${s.us}`}>
                           {p.name} - US {s.us} (موجودی: {s.stock})
                         </option>
                       ))}
@@ -359,8 +359,8 @@ export default function OrderCreate() {
                 onClick={() => {
                   const select = document.querySelector('select')
                   if (select.value) {
-                    const [productId, size] = select.value.split(':')
-                    if (productId && size) handleAddItem(Number(productId), size)
+                    const [slug, sizeUs] = select.value.split(':')
+                    if (slug && sizeUs) handleAddItem(slug, sizeUs)
                     select.value = ''
                   }
                 }}
@@ -404,7 +404,7 @@ export default function OrderCreate() {
                             {item.name}
                           </bdi>
                         </td>
-                        <td className="px-3 py-2 text-[#111]">US {item.size}</td>
+                        <td className="px-3 py-2 text-[#111]">US {item.sizeUs}</td>
                         <td className="px-3 py-2">
                           <div className="flex items-center gap-1">
                             <button

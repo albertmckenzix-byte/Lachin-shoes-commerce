@@ -2,24 +2,43 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useCart } from '../../contexts/CartContext'
 import { formatPrice } from '../../utils/format'
-import { EXPRESS_SHIPPING_FEE } from '../../config'
+import { checkCoupon } from '../../api/orders'
 
-export default function OrderSummary({ subtotal, selectedDelivery, discount, promoCode, setPromoCode, setDiscount }) {
+export default function OrderSummary({ subtotal, selectedDelivery, discount, promoCode, setPromoCode, setDiscount, onCouponApplied, settings }) {
   const { t } = useTranslation()
-  const [promoError, setPromoError] = useState(false)
+  const [promoError, setPromoError] = useState('')
+  const [promoLoading, setPromoLoading] = useState(false)
 
-  const shippingCost = selectedDelivery === 'express' ? EXPRESS_SHIPPING_FEE : 0
-  const shippingText = selectedDelivery === 'express' ? formatPrice(EXPRESS_SHIPPING_FEE) : t('checkout.free')
+  const freeShippingThreshold = settings?.freeShippingThreshold || 5000000
+  const expressFee = settings?.expressFee || 500000
+  const shippingCost = selectedDelivery === 'express' ? expressFee : (subtotal >= freeShippingThreshold ? 0 : settings?.standardFee || 0)
+  const shippingText = shippingCost === 0 ? t('checkout.free') : formatPrice(shippingCost)
   const discountAmount = discount || 0
   const total = subtotal + shippingCost - discountAmount
 
-  const handleApplyPromo = () => {
-    if (promoCode.trim().toUpperCase() === 'LACHIN10') {
-      setDiscount(Math.round(subtotal * 0.1))
-      setPromoError(false)
-    } else {
+  const handleApplyPromo = async () => {
+    if (!promoCode.trim()) return
+
+    setPromoLoading(true)
+    setPromoError('')
+
+    try {
+      const result = await checkCoupon(promoCode.trim(), subtotal)
+      if (result.valid) {
+        setDiscount(result.discount)
+        setPromoError('')
+        if (onCouponApplied) {
+          onCouponApplied(result.percent, result.discount)
+        }
+      } else {
+        setDiscount(0)
+        setPromoError('کد تخفیف معتبر نیست')
+      }
+    } catch (err) {
       setDiscount(0)
-      setPromoError(true)
+      setPromoError('خطا در بررسی کد تخفیف')
+    } finally {
+      setPromoLoading(false)
     }
   }
 
@@ -35,9 +54,10 @@ export default function OrderSummary({ subtotal, selectedDelivery, discount, pro
             value={promoCode}
             onChange={(e) => {
               setPromoCode(e.target.value)
-              setPromoError(false)
+              setPromoError('')
             }}
-            className="flex-1 h-[40px] bg-transparent border-0 border-b-[1px] border-[#BDBDBD] text-[13px] text-black placeholder-[#8a8a8a] focus:border-black focus:outline-none"
+            disabled={promoLoading}
+            className="flex-1 h-[40px] bg-transparent border-0 border-b-[1px] border-[#BDBDBD] text-[13px] text-black placeholder-[#8a8a8a] focus:border-black focus:outline-none disabled:opacity-50"
             dir="ltr"
             style={{ textAlign: 'start' }}
             aria-describedby={promoError ? 'promo-error' : undefined}
@@ -46,13 +66,13 @@ export default function OrderSummary({ subtotal, selectedDelivery, discount, pro
           <button
             type="button"
             onClick={handleApplyPromo}
-            disabled={!promoCode.trim()}
+            disabled={!promoCode.trim() || promoLoading}
             className="h-[40px] px-4 bg-[#E4E4E4] text-[11px] font-medium text-black disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-colors rounded-none whitespace-nowrap ms-2"
           >
-            {t('checkout.apply')}
+            {promoLoading ? 'در حال بررسی...' : t('checkout.apply')}
           </button>
         </div>
-        {promoError && <p id="promo-error" className="mt-2 text-[11px] text-red-600" role="alert">{t('checkout.invalidPromocode')}</p>}
+        {promoError && <p id="promo-error" className="mt-2 text-[11px] text-red-600" role="alert">{promoError}</p>}
       </div>
 
       <div className="border-b border-[#BDBDBD] pb-4 space-y-3">
