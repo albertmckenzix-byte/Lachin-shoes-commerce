@@ -20,4 +20,4 @@ python scripts/agent_bridge_mcp.py
 
 The process speaks MCP JSON-RPC over stdin/stdout. Do not type arbitrary text into the process; connect through an MCP client. For a quick protocol test, send an initialize request followed by tools/list. Diagnostics are written to stderr only.
 
-The bridge requires Python 3.10+ and uses only the standard library.
+Run the focused local tests with:\n\n```bash\npython scripts/test_agent_bridge.py\n```\n\nThe bridge requires Python 3.10+ and uses only the standard library.
