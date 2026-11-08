@@ -1,5 +1,5 @@
 from django.contrib.auth import authenticate
-from django.db.models import Count, Q, Sum, Max, F, CharField, Value
+from django.db.models import Count, Q, Sum, Max, F, CharField, Value, Avg
 from django.db.models.functions import Coalesce, Concat
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -979,6 +979,22 @@ class AdminCustomerListView(generics.ListAPIView):
         # Get distinct cities
         cities = list(Customer.objects.values_list('city', flat=True).distinct().order_by('city'))
 
+        # Summary aggregates
+        now = timezone.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        total_customers = base_qs.count()
+        new_this_month = Customer.objects.filter(created_at__gte=month_start).count()
+        returning_count = base_qs.filter(orders_count__gt=1).count()
+        avg_spent = Customer.objects.annotate(
+            total_spent=Coalesce(
+                Sum(
+                    'orders__total',
+                    filter=Q(orders__payment_status='paid') & ~Q(orders__status='cancelled')
+                ),
+                0
+            )
+        ).aggregate(avg=Avg('total_spent'))['avg'] or 0
+
         return Response({
             'results': serializer.data,
             'count': queryset.count(),
@@ -986,6 +1002,12 @@ class AdminCustomerListView(generics.ListAPIView):
             'pageSize': page_size,
             'counts': counts,
             'cities': cities,
+            'summary': {
+                'totalCustomers': total_customers,
+                'newThisMonth': new_this_month,
+                'returningCount': returning_count,
+                'averageSpend': int(avg_spent),
+            },
         })
 
 

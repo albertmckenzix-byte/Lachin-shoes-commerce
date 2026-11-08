@@ -2,21 +2,41 @@ import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Menu, X } from 'lucide-react'
 import { useAuth } from './AuthContext'
-import { ORDERS } from '../data/orders'
+import { api } from './api'
 
-// Count orders with status "new" for the sidebar badge
-const NEW_ORDERS_COUNT = ORDERS.filter((o) => o.status === 'new').length
+function useNewOrdersCount() {
+  const [count, setCount] = useState(0)
 
-const NAV_ITEMS = [
-  { label: 'داشبورد', to: '/admin/dashboard' },
-  { label: 'محصولات', to: '/admin/products' },
-  { label: 'سفارش‌ها', to: '/admin/orders', badge: NEW_ORDERS_COUNT },
-  { label: 'مشتریان', to: '/admin/customers' },
-  { label: 'تنظیمات', to: null },
-]
+  useEffect(() => {
+    const fetchCount = async () => {
+      try {
+        const data = await api('/admin/orders/summary/')
+        setCount(data.newCount || 0)
+      } catch (err) {
+        console.error('Failed to fetch new orders count:', err)
+      }
+    }
+
+    fetchCount()
+    const interval = setInterval(fetchCount, 60000) // Refresh every 60 seconds
+    return () => clearInterval(interval)
+  }, [])
+
+  return count
+}
 
 function NavItems({ onNavigate }) {
   const location = useLocation()
+  const newOrdersCount = useNewOrdersCount()
+
+  const NAV_ITEMS = [
+    { label: 'داشبورد', to: '/admin/dashboard' },
+    { label: 'محصولات', to: '/admin/products' },
+    { label: 'سفارش‌ها', to: '/admin/orders', badge: newOrdersCount },
+    { label: 'مشتریان', to: '/admin/customers' },
+    { label: 'تنظیمات', to: null },
+  ]
+
   return (
     <nav className="flex flex-col gap-1">
       {NAV_ITEMS.map((item) => {

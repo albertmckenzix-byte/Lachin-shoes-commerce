@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { formatNumber } from '../utils/format'
-import { ORDERS, STATUS_LABELS } from '../data/orders'
+import { formatNumber, formatPrice } from '../utils/format'
 import { api } from './api'
 
 // Stable "now" for date memos — computed once per module load, not per render
@@ -26,6 +25,14 @@ const STATUS_COLORS = {
   shipped: '#6d9be0',
   delivered: '#5fb374',
   cancelled: '#e07b73',
+}
+
+const STATUS_LABELS = {
+  new: 'جدید',
+  processing: 'در حال پردازش',
+  shipped: 'ارسال شده',
+  delivered: 'تحویل شده',
+  cancelled: 'لغو شده',
 }
 
 // Persian weekday names (Sat = index 0 of Jalali week → Shambe)
@@ -83,20 +90,6 @@ function todayJalali() {
   }
 }
 
-/** Filter orders by date range (returns new array) */
-function filterByRange(orders, range) {
-  const now = new Date()
-  if (range === 'today') {
-    const todayStr = localDateStr(now)
-    return orders.filter((o) => localDateStr(new Date(o.createdAt)) === todayStr)
-  }
-  const days = range === '7' ? 7 : 30
-  const cutoff = new Date(now)
-  cutoff.setDate(cutoff.getDate() - days)
-  cutoff.setHours(0, 0, 0, 0)
-  return orders.filter((o) => new Date(o.createdAt) >= cutoff)
-}
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
@@ -132,44 +125,52 @@ function StatCard({ label, value, note, noteIsLink, noteTo }) {
   )
 }
 
-/** 7-day bar chart – pure div-based, no extra dependency */
-function WeeklyBarChart({ daySales }) {
-  // daySales: array of { dateStr, label, sales } oldest→newest (newest = today, displayed RTL = leftmost)
-  const maxSales = Math.max(...daySales.map((d) => d.sales), 1)
+/** Bar chart for daily sales */
+function DailySalesChart({ dailySales, days }) {
+  const maxSales = Math.max(...dailySales.map((d) => d.sales), 1)
   const todayStr = localDateStr(getNow())
+  const isCompact = days > 7
+
+  // For 30/90 days, show fewer labels
+  const labelInterval = days === 30 ? 5 : days === 90 ? 15 : 1
 
   return (
     <div
-      className="flex h-full items-end gap-2 pt-6"
+      className="flex h-full items-end gap-1 pt-6"
       dir="rtl"
-      aria-label="نمودار فروش هفت روز گذشته"
+      aria-label="نمودار فروش روزانه"
     >
-      {daySales.map((day) => {
-        const isToday = day.dateStr === todayStr
+      {dailySales.map((day, index) => {
+        const isToday = day.date === todayStr
         const pct = maxSales > 0 ? (day.sales / maxSales) * 100 : 0
         const minH = day.sales > 0 ? 8 : 4
         const barH = Math.max(minH, Math.round((pct / 100) * 140))
         const salesM = (day.sales / 1_000_000).toFixed(1)
+        const showLabel = days === 7 || index % labelInterval === 0 || index === dailySales.length - 1
+        const label = showLabel ? weekdayLabel(day.date, isToday) : ''
+
         return (
           <div
-            key={day.dateStr}
+            key={day.date}
             className="flex flex-1 flex-col items-center gap-1"
           >
             {/* value label */}
-            <div className="text-[11px] font-semibold text-[#111]">
-              {day.sales > 0 ? formatNumber(Number(salesM)) : ''}
-            </div>
+            {days === 7 && (
+              <div className="text-[11px] font-semibold text-[#111]">
+                {day.sales > 0 ? formatNumber(Number(salesM)) : ''}
+              </div>
+            )}
             {/* bar */}
             <div
               style={{ height: `${barH}px` }}
               className={`w-full max-w-[36px] rounded-t-sm transition-all ${
-                isToday ? 'bg-[#fcc934]' : 'bg-[#111]'
+                isToday ? 'bg-[#FFC83D]' : 'bg-[#111]'
               }`}
               role="presentation"
             />
             {/* weekday label */}
             <div className={`text-[11px] text-center ${isToday ? 'font-bold text-[#111]' : 'text-[#6B6B6B]'}`}>
-              {day.label}
+              {label}
             </div>
           </div>
         )
@@ -201,9 +202,9 @@ function StatusBar({ statusCounts, total }) {
   )
 }
 
-/** Low-stock progress bar for each product (stock / 25) */
-function StockBar({ stock }) {
-  const pct = Math.min(100, Math.round((stock / 25) * 100))
+/** Low-stock progress bar for each product (stock / threshold) */
+function StockBar({ stock, threshold }) {
+  const pct = Math.min(100, Math.round((stock / threshold) * 100))
   return (
     <div className="mt-1.5 h-1.5 w-full rounded-full bg-[#ECECEA]">
       <div
@@ -217,103 +218,87 @@ function StockBar({ stock }) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  // Products loaded from real API (same as ProductsList)
-  const [products, setProducts] = useState([])
-  const [productsLoading, setProductsLoading] = useState(true)
+  const [dashboard, setDashboard] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [days, setDays] = useState(7)
 
-  // Date range selector
-  const [range, setRange] = useState('7')
-
-  const loadProducts = useCallback(async () => {
-    setProductsLoading(true)
+  const loadDashboard = useCallback(async () => {
+    setLoading(true)
+    setError('')
     try {
-      const data = await api('/admin/products/')
-      setProducts(Array.isArray(data) ? data : [])
-    } catch {
-      setProducts([])
+      const data = await api(`/admin/dashboard/?days=${days}`)
+      setDashboard(data)
+    } catch (err) {
+      setError(err.message || 'خطا در دریافت داشبورد')
     } finally {
-      setProductsLoading(false)
+      setLoading(false)
     }
-  }, [])
+  }, [days])
 
   useEffect(() => {
-    loadProducts()
-  }, [loadProducts])
-
-  // ── Derived data ────────────────────────────────────────────────────────────
-
-  // Today's orders (always fixed to today regardless of range)
-  const todayOrders = useMemo(() => {
-    const todayStr = localDateStr(getNow())
-    return ORDERS.filter((o) => localDateStr(new Date(o.createdAt)) === todayStr)
-  }, [])
-
-  // KPI: today's sales
-  const todaySales = useMemo(
-    () => todayOrders.reduce((s, o) => s + o.total, 0),
-    [todayOrders]
-  )
-
-  // KPI: last-7-days orders (always 7, independent of range select)
-  const last7Orders = useMemo(() => filterByRange(ORDERS, '7'), [])
-  const last7Sales = useMemo(
-    () => last7Orders.reduce((s, o) => s + o.total, 0),
-    [last7Orders]
-  )
-
-  // KPI: pending (new + processing) – from all orders
-  const pendingCount = useMemo(
-    () => ORDERS.filter((o) => o.status === 'new' || o.status === 'processing').length,
-    []
-  )
-
-  // KPI: low-stock products from API
-  const lowStockProducts = useMemo(
-    () => products.filter((p) => p.total_stock > 0 && p.total_stock < 25),
-    [products]
-  )
-  const totalStock = useMemo(
-    () => products.reduce((s, p) => s + (p.total_stock || 0), 0),
-    [products]
-  )
-
-  // 7-day chart data
-  const daySales = useMemo(() => {
-    const days = lastNDays(7)
-    const todayStr = localDateStr(getNow())
-    return days.map((dateStr) => {
-      const sales = ORDERS.filter(
-        (o) => localDateStr(new Date(o.createdAt)) === dateStr
-      ).reduce((s, o) => s + o.total, 0)
-      return {
-        dateStr,
-        label: weekdayLabel(dateStr, dateStr === todayStr),
-        sales,
-      }
-    })
-  }, [])
-
-  // Status breakdown (all orders)
-  const statusCounts = useMemo(() => {
-    const counts = {}
-    for (const o of ORDERS) {
-      counts[o.status] = (counts[o.status] || 0) + 1
-    }
-    return counts
-  }, [])
-
-  // 5 most recent orders
-  const recentOrders = useMemo(
-    () =>
-      [...ORDERS]
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice(0, 5),
-    []
-  )
+    loadDashboard()
+  }, [loadDashboard])
 
   const todayLabel = todayJalali()
 
   // ── Render ──────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-[28px] font-bold text-[#111]">داشبورد</h1>
+            <p className="mt-1 text-sm text-[#6B6B6B]">خلاصه وضعیت فروشگاه</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="flex-1 min-w-[180px] rounded-lg border border-[#E6E6E3] bg-white px-5 py-4">
+              <div className="h-4 w-24 animate-pulse rounded bg-[#ECECEC]" />
+              <div className="mt-1 h-8 w-16 animate-pulse rounded bg-[#ECECEC]" />
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-4">
+          <div className="min-w-0 flex-[2] rounded-lg border border-[#E6E6E3] bg-white p-5" style={{ minWidth: '280px' }}>
+            <div className="h-4 w-32 animate-pulse rounded bg-[#ECECEC]" />
+            <div className="mt-4 h-40 animate-pulse rounded bg-[#ECECEC]" />
+          </div>
+          <div className="flex flex-col rounded-lg border border-[#E6E6E3] bg-white p-5" style={{ minWidth: '220px', flex: '1' }}>
+            <div className="h-4 w-24 animate-pulse rounded bg-[#ECECEC]" />
+            <div className="mt-4 h-3 w-full animate-pulse rounded bg-[#ECECEC]" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-[28px] font-bold text-[#111]">داشبورد</h1>
+            <p className="mt-1 text-sm text-[#6B6B6B]">خلاصه وضعیت فروشگاه</p>
+          </div>
+        </div>
+        <div className="rounded-lg border border-[#E6E6E3] bg-white p-8 text-center">
+          <p className="text-sm text-red-600 mb-4">{error}</p>
+          <button
+            type="button"
+            onClick={loadDashboard}
+            className="h-9 px-4 rounded-full border-[1.5px] border-black text-sm font-semibold text-black hover:bg-black hover:text-white"
+          >
+            تلاش مجدد
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!dashboard) return null
 
   return (
     <div className="flex flex-col gap-6">
@@ -335,13 +320,13 @@ export default function Dashboard() {
             </label>
             <select
               id="dash-range"
-              value={range}
-              onChange={(e) => setRange(e.target.value)}
+              value={days}
+              onChange={(e) => setDays(Number(e.target.value))}
               className="h-[42px] rounded-md border border-[#D9D9D6] bg-white px-3 text-sm text-[#111] outline-none focus:border-[#111]"
             >
-              <option value="today">امروز</option>
-              <option value="7">۷ روز گذشته</option>
-              <option value="30">۳۰ روز گذشته</option>
+              <option value={7}>۷ روز گذشته</option>
+              <option value={30}>۳۰ روز گذشته</option>
+              <option value={90}>۹۰ روز گذشته</option>
             </select>
           </div>
           <Link
@@ -357,46 +342,38 @@ export default function Dashboard() {
       <div className="flex flex-wrap gap-4">
         <StatCard
           label="فروش امروز (تومان)"
-          value={formatNumber(todaySales)}
-          note={`از ${formatNumber(todayOrders.length)} سفارش`}
+          value={formatPrice(dashboard.today.sales)}
+          note={`از ${formatNumber(dashboard.today.ordersCount)} سفارش`}
         />
         <StatCard
-          label="سفارش‌های ۷ روز گذشته"
-          value={`${formatNumber(last7Orders.length)} سفارش`}
-          note={`${formatNumber(last7Sales)} تومان`}
+          label={`سفارش‌های ${days} روز گذشته`}
+          value={`${formatNumber(dashboard.range.ordersCount)} سفارش`}
+          note={`${formatPrice(dashboard.range.sales)}`}
         />
         <StatCard
-          label="در انتظار پردازش"
-          value={`${formatNumber(pendingCount)} سفارش`}
+          label="در انتظار پرداخت"
+          value={`${formatNumber(dashboard.pendingPaymentCount)} سفارش`}
           note="بررسی سفارش‌های جدید"
           noteIsLink
-          noteTo="/admin/orders"
+          noteTo="/admin/orders?status=new"
         />
         <StatCard
-          label={`کم‌موجودی (زیر ۲۵ جفت)`}
-          value={
-            productsLoading
-              ? '…'
-              : `${formatNumber(lowStockProducts.length)} محصول`
-          }
-          note={
-            productsLoading
-              ? ''
-              : `از ${formatNumber(totalStock)} جفت موجودی کل`
-          }
+          label="کم‌موجودی"
+          value={`${formatNumber(dashboard.lowStock.products.length)} محصول`}
+          note={`از ${formatNumber(dashboard.lowStock.totalStock)} جفت موجودی کل`}
         />
       </div>
 
       {/* ── Mid row: Chart + Status breakdown ── */}
       <div className="flex flex-wrap gap-4">
-        {/* Weekly sales bar chart */}
+        {/* Daily sales bar chart */}
         <div className="min-w-0 flex-[2] rounded-lg border border-[#E6E6E3] bg-white p-5" style={{ minWidth: '280px' }}>
           <div className="mb-1 text-[15px] font-semibold text-[#111]">
-            فروش هفت روز گذشته
+            فروش {days} روز گذشته
           </div>
           <div className="text-xs text-[#6B6B6B]">میلیون تومان</div>
           <div className="mt-4" style={{ height: '180px' }}>
-            <WeeklyBarChart daySales={daySales} />
+            <DailySalesChart dailySales={dashboard.dailySales} days={days} />
           </div>
         </div>
 
@@ -409,15 +386,15 @@ export default function Dashboard() {
             وضعیت سفارش‌ها
           </div>
 
-          {ORDERS.length === 0 ? (
+          {dashboard.statusCounts.total === 0 ? (
             <p className="text-sm text-[#6B6B6B]">هنوز سفارشی ثبت نشده است</p>
           ) : (
             <>
-              <StatusBar statusCounts={statusCounts} total={ORDERS.length} />
+              <StatusBar statusCounts={dashboard.statusCounts} total={dashboard.statusCounts.total} />
 
               <ul className="mt-4 flex flex-col gap-2.5">
                 {Object.entries(STATUS_COLORS).map(([key, color]) => {
-                  const count = statusCounts[key] || 0
+                  const count = dashboard.statusCounts[key] || 0
                   return (
                     <li key={key} className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
@@ -441,7 +418,7 @@ export default function Dashboard() {
               <div className="mt-auto border-t border-[#ECECEA] pt-3 flex items-center justify-between">
                 <span className="text-sm text-[#6B6B6B]">مجموع سفارش‌ها</span>
                 <span className="text-sm font-bold text-[#111]">
-                  {formatNumber(ORDERS.length)}
+                  {formatNumber(dashboard.statusCounts.total)}
                 </span>
               </div>
             </>
@@ -449,9 +426,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Bottom row: Recent orders table + Low-stock list ── */}
+      {/* ── Bottom row: Latest orders table + Low-stock list ── */}
       <div className="flex flex-wrap gap-4">
-        {/* Recent orders */}
+        {/* Latest orders */}
         <div className="min-w-0 flex-[2] rounded-lg border border-[#E6E6E3] bg-white" style={{ minWidth: '280px' }}>
           <div className="flex items-center justify-between border-b border-[#ECECEA] px-5 py-4">
             <div className="text-[15px] font-semibold text-[#111]">
@@ -465,7 +442,7 @@ export default function Dashboard() {
             </Link>
           </div>
 
-          {recentOrders.length === 0 ? (
+          {dashboard.latestOrders.length === 0 ? (
             <div className="px-5 py-10 text-center text-sm text-[#6B6B6B]">
               هنوز سفارشی ثبت نشده است
             </div>
@@ -474,7 +451,7 @@ export default function Dashboard() {
               <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr>
-                    {['شماره', 'مشتری', 'مبلغ (تومان)', 'وضعیت'].map((h) => (
+                    {['شماره', 'مشتری', 'شهر', 'مبلغ', 'وضعیت'].map((h) => (
                       <th
                         key={h}
                         className="bg-[#FAFAF8] px-4 py-3 text-start text-sm font-medium text-[#6B6B6B]"
@@ -485,26 +462,26 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentOrders.map((order) => (
+                  {dashboard.latestOrders.map((order) => (
                     <tr
                       key={order.id}
                       className="border-t border-[#EEE]"
                     >
                       <td className="px-4 py-3.5">
                         <bdi dir="ltr" className="font-semibold text-[#111]">
-                          {order.orderNumber}
+                          #{order.number}
                         </bdi>
                       </td>
                       <td className="px-4 py-3.5">
                         <div className="font-medium text-[#111]">
-                          {order.customer.name}
-                        </div>
-                        <div className="text-xs text-[#6B6B6B]">
-                          {order.customer.city}
+                          {order.customerName}
                         </div>
                       </td>
+                      <td className="px-4 py-3.5 text-[#6B6B6B]">
+                        {order.city}
+                      </td>
                       <td className="px-4 py-3.5 font-medium text-[#111]">
-                        {formatNumber(order.total)}
+                        {formatPrice(order.total)}
                       </td>
                       <td className="px-4 py-3.5">
                         <StatusBadge status={order.status} />
@@ -535,71 +512,47 @@ export default function Dashboard() {
           </div>
 
           <div className="flex flex-col divide-y divide-[#ECECEA]">
-            {productsLoading ? (
-              <div className="px-5 py-6">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="mb-4 flex items-center gap-3">
-                    <div className="h-11 w-11 animate-pulse rounded-md bg-[#ECECEC]" />
-                    <div className="flex-1">
-                      <div className="h-3.5 w-3/4 animate-pulse rounded bg-[#ECECEC]" />
-                      <div className="mt-2 h-3 w-1/2 animate-pulse rounded bg-[#ECECEC]" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : lowStockProducts.length === 0 ? (
+            {dashboard.lowStock.products.length === 0 ? (
               <div className="px-5 py-10 text-center text-sm text-[#6B6B6B]">
                 همه محصولات موجودی کافی دارند 🎉
               </div>
             ) : (
-              lowStockProducts.map((p) => {
-                const imgUrl =
-                  p.images && p.images.length > 0 ? p.images[0].url : null
-                return (
-                  <div key={p.id} className="px-5 py-3.5">
-                    <div className="flex items-center gap-3">
-                      {/* thumbnail */}
-                      {imgUrl ? (
-                        <img
-                          src={imgUrl}
-                          alt={p.name}
-                          className="h-11 w-11 flex-shrink-0 rounded-md object-cover"
-                        />
-                      ) : (
-                        <div
-                          className="h-11 w-11 flex-shrink-0 rounded-md bg-[#ECECEC]"
-                          aria-hidden="true"
-                        />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <bdi
-                          dir="ltr"
-                          className="block truncate text-sm font-medium text-[#111]"
-                        >
-                          {p.name}
-                        </bdi>
-                        <div className="mt-0.5 flex items-center gap-2">
-                          <span className="text-xs text-[#6B6B6B]">
-                            {formatNumber(p.total_stock)} جفت باقی‌مانده
-                          </span>
-                          <span className="inline-block rounded-full bg-[#fcc934] px-2 py-px text-[10px] font-semibold text-[#2b2100]">
-                            کم‌موجودی
-                          </span>
-                        </div>
-                        <StockBar stock={p.total_stock} />
+              dashboard.lowStock.products.map((p) => (
+                <div key={p.id} className="px-5 py-3.5">
+                  <div className="flex items-center gap-3">
+                    {/* thumbnail */}
+                    {p.image ? (
+                      <img
+                        src={p.image}
+                        alt={p.name}
+                        className="h-11 w-11 flex-shrink-0 rounded-md object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="h-11 w-11 flex-shrink-0 rounded-md bg-[#ECECEC]"
+                        aria-hidden="true"
+                      />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-[#111]">
+                        {p.name}
                       </div>
+                      <div className="mt-0.5 text-xs text-[#6B6B6B]">
+                        موجودی: {formatNumber(p.totalStock)} جفت
+                      </div>
+                      <StockBar stock={p.totalStock} threshold={dashboard.lowStock.threshold} />
                     </div>
                   </div>
-                )
-              })
+                </div>
+              ))
             )}
           </div>
 
-          {!productsLoading && lowStockProducts.length > 0 && (
-            <div className="border-t border-[#ECECEA] px-5 py-3 text-xs text-[#6B6B6B]">
-              نوار پُر یعنی ۲۵ جفت (حد کم‌موجودی)
-            </div>
-          )}
+          <div className="mt-auto border-t border-[#ECECEA] px-5 py-3">
+            <p className="text-xs text-[#6B6B6B]">
+              آستانه کم‌موجودی: {formatNumber(dashboard.lowStock.threshold)} جفت
+            </p>
+          </div>
         </div>
       </div>
     </div>
