@@ -9,31 +9,42 @@ At the start of each task:
 2. Read the project overview, tech stack, and current status.
 3. Read the relevant frontend/backend/API/decision notes for the task.
 4. Read `project-memory/AGENT-COLLABORATION.md`.
-5. Inspect the current source code and tests before editing.
+5. Call the shared MCP context and inbox tools as described in the collaboration protocol.
+6. Inspect the actual source code, tests, and current Git status before editing.
 
-Agent-specific instructions:
+Agent-specific quick-start instructions:
 - Kilo Code: `KILO.md`
 - Google Antigravity: `ANTIGRAVITY.md`
 
 ## 2. Shared source of truth
 
-The code, migrations, tests, and verified runtime behaviour are authoritative. Markdown memory is shared context and must be kept accurate. If code and memory disagree, investigate and update the memory; do not blindly follow stale notes.
+The code, migrations, tests, and verified runtime behaviour are authoritative. The Obsidian Vault at `project-memory/` is the canonical human-readable project memory. If code and memory disagree, investigate and update the memory; do not blindly follow stale notes.
 
 Clearly distinguish implemented, mocked, planned, and unverified behaviour.
 
-## 3. Collaboration protocol
+## 3. Full-Stack agent model
 
-- Kilo Code primarily owns frontend work.
-- Antigravity primarily owns backend work.
-- Both agents may inspect either side and make cross-layer changes when necessary.
-- API contracts are shared ownership. Never silently change an endpoint or schema.
-- Before integration work, inspect both the frontend caller and backend implementation.
-- Use explicit handoffs containing file paths, endpoint details, schemas, assumptions, and acceptance criteria.
+Kilo Code and Google Antigravity are both **Full-Stack agents**. Neither agent has an exclusive frontend or backend role. Either may implement, debug, test, or review:
+- Frontend pages, components, state, styling, accessibility, i18n/RTL, and API integration.
+- Backend models, migrations, serializers, views, routing, permissions, business rules, and tests.
+- Cross-layer features spanning frontend, backend, database, and API contracts.
+
+The project owner may assign any task to either agent. Task ownership is determined by the shared task claim, not by a permanent frontend/backend split.
+
+## 4. Collaboration protocol
+
 - Use the local `lachin-agent-bridge` MCP server for durable messages, shared tasks, activity, and decisions. See `project-memory/AGENT-COLLABORATION.md`.
-- At startup, check your inbox and shared task list. Before finishing, record activity, update task status, send any required handoff, and check the inbox again.
-- Claim a shared task before starting it. Never take over a task already claimed by the other agent without coordination.
+- At startup, check your inbox, recent activity, and shared task list.
+- Claim a shared task before editing. A task should name its owner, exact expected paths, acceptance criteria, and dependencies.
+- One agent owns a task's implementation at a time. Do not have both agents edit the same files concurrently.
+- For cross-layer tasks, prefer one agent owning the complete vertical slice. If work must be split, define non-overlapping file ownership and explicit API handoffs first.
+- API contracts and database changes are shared concerns. Communicate before changing a contract that another in-progress task depends on.
+- Before integration work, inspect both the frontend caller and backend implementation.
+- MCP coordination is cooperative: it does not interrupt or wake an idle model. Agents must check their inbox at startup, after milestones, and before finishing.
 
-## 4. Memory maintenance
+## 5. Obsidian Vault / memory maintenance
+
+Open `project-memory/` as the Obsidian Vault. The same Markdown files remain readable in any editor and version-controlled by Git.
 
 After every meaningful task, update the relevant files under `project-memory/` in the same branch/change where practical.
 
@@ -50,19 +61,20 @@ A memory update must state:
 - Commands/tests actually run and their outcomes.
 - Remaining work/blockers.
 
-Do not fabricate test results, endpoint behaviour, schema details, or deployment facts.
+Do not fabricate test results, endpoint behaviour, schema details, or deployment facts. Do not store secrets, tokens, credentials, customer personal data, or payment data in the Vault.
 
-## 5. Git workflow and concurrent editing
+## 6. Git workflow and concurrent editing
 
 - Work on the task branch requested by the project owner.
 - Do not commit directly to the default branch unless explicitly requested.
 - Check `git status` and branch before editing.
-- Avoid simultaneous edits to the same memory file. If agents work in parallel, use separate task branches or coordinate ownership.
+- In the shared local checkout, coordinate before switching branches or performing operations that affect the other agent's working tree.
+- Avoid simultaneous edits to the same memory or source file. Shared task claims are coordination, not operating-system file locks.
 - Pull/rebase carefully before pushing; resolve conflicts by preserving verified information.
 - Keep commits focused and descriptive.
 - Never overwrite another agent's unreviewed work.
 
-## 6. Security and data handling
+## 7. Security and data handling
 
 - Never commit secrets, tokens, passwords, private keys, or real customer/payment data.
 - Never trust client-side prices, totals, coupons, stock, or payment status.
@@ -70,12 +82,12 @@ Do not fabricate test results, endpoint behaviour, schema details, or deployment
 - Do not log credentials, tokens, payment details, or unnecessary personal data.
 - The local bridge database is runtime-only and must stay ignored by Git.
 
-## 7. Completion reporting
+## 8. Completion reporting
 
 At the end of a task, report:
 1. Files changed.
 2. Behaviour implemented.
 3. API/contract impact.
 4. Tests/checks run and exact outcomes.
-5. Memory files updated.
+5. Vault memory files updated.
 6. Remaining issues or follow-up tasks.
