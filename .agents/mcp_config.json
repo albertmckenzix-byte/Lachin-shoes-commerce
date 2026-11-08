@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "lachin-agent-bridge": {
+      "command": "python",
+      "args": ["scripts/agent_bridge_mcp.py"]
+    }
+  }
+}
