@@ -1,30 +1,18 @@
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { featuredProduct } from '../data/products'
-import { useCart } from '../contexts/CartContext'
 import { formatPrice } from '../utils/format'
 import { getProductImage } from '../utils/productImages'
 import { getBadgeLabel } from './ProductCard'
 
 export default function FeaturedProductCard({ product, variant = 'default', className = '' }) {
   const { t, i18n } = useTranslation()
-  const { addItem } = useCart()
   const data = product || featuredProduct
   const { nameKey, price, oldPrice, badge, slug } = data
   const imageUrl = getProductImage(data)
   const displayName = data.name || t(nameKey)
   const isRTL = i18n.language === 'fa'
   const badgeLabel = getBadgeLabel(badge, t)
-
-  const [added, setAdded] = useState(false)
-
-  const handleAddToCart = (e) => {
-    e.stopPropagation()
-    addItem(data)
-    setAdded(true)
-    setTimeout(() => setAdded(false), 1500)
-  }
 
   return (
     <div
@@ -84,14 +72,13 @@ export default function FeaturedProductCard({ product, variant = 'default', clas
             )}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleAddToCart}
-          className="w-fit max-w-full h-8 px-4 inline-flex items-center justify-center whitespace-nowrap rounded-full border border-[#111] bg-transparent text-[11px] font-semibold text-[#111] leading-none hover:bg-black hover:text-white transition-colors cursor-pointer"
+        <Link
+          to={`/product/${slug}`}
+          className="w-fit max-w-full h-8 px-4 inline-flex items-center justify-center whitespace-nowrap rounded-full border border-[#111] bg-transparent text-[11px] font-semibold text-[#111] leading-none hover:bg-black hover:text-white transition-colors"
           style={{ lineHeight: 1, letterSpacing: 0 }}
         >
-          {added ? t('products.added') : (isRTL ? 'افزودن به سبد' : t('products.addToCart'))}
-        </button>
+          {isRTL ? 'مشاهده محصول' : t('products.viewDetails')}
+        </Link>
       </div>
     </div>
   )

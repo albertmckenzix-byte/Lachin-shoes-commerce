@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils.text import slugify
 from rest_framework import serializers
 
-from .models import Order, OrderItem, Product, ProductImage, ProductSize
+from .models import Customer, Order, OrderItem, OrderStatusLog, Product, ProductImage, ProductSize
 from .sizes import SIZE_TABLE_SET
 
 
@@ -341,3 +341,184 @@ class OrderDetailPublicSerializer(serializers.ModelSerializer):
 class CouponCheckSerializer(serializers.Serializer):
     code     = serializers.CharField(max_length=50)
     subtotal = serializers.IntegerField(min_value=0)
+
+
+# =============================================================================
+# Admin order serializers
+# =============================================================================
+
+class AdminOrderStatusLogSerializer(serializers.ModelSerializer):
+    """Serializer for order status change logs."""
+    createdAt = serializers.DateTimeField(source="created_at")
+
+    class Meta:
+        model = OrderStatusLog
+        fields = ["actor", "field", "old_value", "new_value", "createdAt"]
+
+
+class AdminOrderItemSerializer(serializers.ModelSerializer):
+    """Serializer for order items in admin views."""
+    lineTotal = serializers.IntegerField(source="line_total")
+
+    class Meta:
+        model = OrderItem
+        fields = ["product_name", "size_us", "size_eu", "unit_price", "quantity", "lineTotal"]
+
+
+class AdminOrderListSerializer(serializers.ModelSerializer):
+    """Admin order list view with masked phone."""
+    customerName = serializers.CharField(source="get_full_name", read_only=True)
+    phone = serializers.SerializerMethodField()
+    total = serializers.IntegerField()
+    status = serializers.CharField()
+    paymentStatus = serializers.CharField(source="payment_status")
+    createdAt = serializers.DateTimeField(source="created_at")
+
+    class Meta:
+        model = Order
+        fields = ["id", "number", "customerName", "city", "phone", "total",
+                  "status", "paymentStatus", "createdAt"]
+
+    def get_customerName(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+
+    def get_phone(self, obj):
+        """Mask phone in list views: 0911***4567"""
+        phone = obj.phone
+        if len(phone) >= 7:
+            return phone[:4] + "***" + phone[-4:]
+        return phone
+
+
+class AdminOrderDetailSerializer(serializers.ModelSerializer):
+    """Admin order detail view with full information."""
+    customerName = serializers.SerializerMethodField()
+    phone = serializers.CharField()
+    paymentStatus = serializers.CharField(source="payment_status")
+    createdAt = serializers.DateTimeField(source="created_at")
+    paidAt = serializers.DateTimeField(source="paid_at", allow_null=True)
+    items = AdminOrderItemSerializer(many=True, read_only=True)
+    logs = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Order
+        fields = ["id", "number", "customerName", "phone", "email", "city",
+                  "address", "postal_code", "delivery_method", "subtotal",
+                  "shipping_fee", "discount_total", "total", "coupon_code",
+                  "note", "status", "paymentStatus", "createdAt", "paidAt",
+                  "items", "logs"]
+
+    def get_customerName(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+
+    def get_logs(self, obj):
+        return AdminOrderStatusLogSerializer(obj.logs.all(), many=True).data
+
+
+class AdminOrderCreateSerializer(serializers.Serializer):
+    """Serializer for manual order creation by admin."""
+    first_name = serializers.CharField(max_length=100)
+    last_name = serializers.CharField(max_length=100)
+    phone = serializers.CharField(max_length=20)
+    email = serializers.EmailField(required=False, allow_blank=True, default="")
+    country = serializers.CharField(max_length=100, required=False, default="Iran")
+    city = serializers.CharField(max_length=100)
+    address = serializers.CharField()
+    postal_code = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
+    delivery_method = serializers.ChoiceField(choices=["standard", "express"], default="standard")
+    coupon_code = serializers.CharField(max_length=50, required=False, allow_blank=True, default="")
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+    payment_status = serializers.ChoiceField(
+        choices=["pending", "paid", "refunded"],
+        required=False,
+        default="pending"
+    )
+    items = OrderItemInputSerializer(many=True)
+
+    def validate_items(self, value):
+        if len(value) == 0:
+            raise serializers.ValidationError("حداقل یک کالا الزامی است.")
+        if len(value) > 10:
+            raise serializers.ValidationError("حداکثر ۱۰ قلم در هر سفارش مجاز است.")
+        return value
+
+
+class AdminOrderUpdateSerializer(serializers.Serializer):
+    """Serializer for updating order status/payment_status/note."""
+    status = serializers.ChoiceField(
+        choices=["new", "processing", "shipped", "delivered", "cancelled"],
+        required=False
+    )
+    paymentStatus = serializers.ChoiceField(
+        choices=["pending", "paid", "refunded"],
+        required=False
+    )
+    note = serializers.CharField(required=False, allow_blank=True)
+
+
+# =============================================================================
+# Admin customer serializers
+# =============================================================================
+
+class AdminCustomerListSerializer(serializers.ModelSerializer):
+    """Admin customer list view with masked phone."""
+    name = serializers.SerializerMethodField()
+    phone = serializers.SerializerMethodField()
+    ordersCount = serializers.IntegerField(source="orders_count")
+    totalSpent = serializers.IntegerField(source="total_spent")
+    lastOrderAt = serializers.DateTimeField(source="last_order_at", allow_null=True)
+    type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Customer
+        fields = ["id", "name", "phone", "city", "ordersCount", "totalSpent",
+                  "lastOrderAt", "type"]
+
+    def get_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+
+    def get_phone(self, obj):
+        """Mask phone in list views: 0911***4567"""
+        phone = obj.phone
+        if len(phone) >= 7:
+            return phone[:4] + "***" + phone[-4:]
+        return phone
+
+    def get_type(self, obj):
+        return "new" if obj.orders_count == 1 else "returning"
+
+
+class AdminCustomerDetailSerializer(serializers.ModelSerializer):
+    """Admin customer detail view with full information."""
+    name = serializers.SerializerMethodField()
+    phone = serializers.CharField()
+    orders = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Customer
+        fields = ["id", "name", "phone", "email", "city", "created_at", "orders"]
+
+    def get_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}"
+
+    def get_orders(self, obj):
+        """Return list of customer's orders."""
+        orders = obj.orders.all().order_by("-created_at")
+        return AdminOrderListSerializer(orders, many=True).data
+
+
+class AdminCustomerCreateSerializer(serializers.Serializer):
+    """Serializer for creating a customer manually."""
+    first_name = serializers.CharField(max_length=100)
+    last_name = serializers.CharField(max_length=100)
+    phone = serializers.CharField(max_length=20)
+    email = serializers.EmailField(required=False, allow_blank=True, default="")
+    city = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
+
+
+class AdminCustomerUpdateSerializer(serializers.Serializer):
+    """Serializer for updating customer information."""
+    first_name = serializers.CharField(max_length=100, required=False)
+    last_name = serializers.CharField(max_length=100, required=False)
+    email = serializers.EmailField(required=False, allow_blank=True)
+    city = serializers.CharField(max_length=100, required=False, allow_blank=True)

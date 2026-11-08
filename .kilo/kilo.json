@@ -1,0 +1,11 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "mcp": {
+    "lachin-agent-bridge": {
+      "type": "local",
+      "command": ["python", "scripts/agent_bridge_mcp.py"],
+      "enabled": true,
+      "timeout": 10000
+    }
+  }
+}

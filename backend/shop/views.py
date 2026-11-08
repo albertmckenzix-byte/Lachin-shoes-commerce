@@ -1,8 +1,13 @@
 from django.contrib.auth import authenticate
-from django.db.models import Count, Q, Sum
-from django.db.models.functions import Coalesce
+from django.db.models import Count, Q, Sum, Max, F, CharField, Value, Avg
+from django.db.models.functions import Coalesce, Concat
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+from django.conf import settings
 from PIL import Image
+from openpyxl import Workbook
+from openpyxl.styles import Font, Alignment
 from rest_framework import generics, status
 from rest_framework.authtoken.models import Token
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -10,12 +15,23 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from rest_framework.views import APIView
+import jdatetime
+from datetime import datetime, timedelta
+import pytz
 
-from .models import Coupon, Order, Product, ProductImage
+from .models import Coupon, Customer, Order, Product, ProductImage
 from .permissions import IsStaffUser
 from .serializers import (
+    AdminCustomerCreateSerializer,
+    AdminCustomerDetailSerializer,
+    AdminCustomerListSerializer,
+    AdminCustomerUpdateSerializer,
     AdminLoginSerializer,
     AdminMeSerializer,
+    AdminOrderCreateSerializer,
+    AdminOrderDetailSerializer,
+    AdminOrderListSerializer,
+    AdminOrderUpdateSerializer,
     AdminProductImageSerializer,
     AdminProductListSerializer,
     AdminProductSerializer,
@@ -25,7 +41,7 @@ from .serializers import (
     OrderPublicSerializer,
     PublicProductSerializer,
 )
-from .services.orders import OrderError, create_order
+from .services.orders import OrderError, change_order_status, create_order, set_payment_status
 from .sizes import SIZE_TABLE
 
 LOGIN_ERROR = 'نام کاربری یا رمز عبور اشتباه است'
@@ -365,3 +381,809 @@ class CouponCheckView(APIView):
 
         discount = min(subtotal, (subtotal * coupon.percent) // 100)
         return Response({"valid": True, "percent": coupon.percent, "discount": discount})
+
+
+# =============================================================================
+# Public settings endpoint
+# =============================================================================
+
+class SettingsView(APIView):
+    """
+    GET /api/settings/
+    Returns public store settings.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        settings = StoreSettings.get()
+        return Response({
+            'freeShippingThreshold': settings.free_shipping_threshold,
+            'standardFee': settings.standard_fee,
+            'expressFee': settings.express_fee,
+        })
+
+
+# =============================================================================
+# Admin dashboard view
+# =============================================================================
+
+class AdminDashboardView(APIView):
+    """
+    GET /api/admin/dashboard/?days=7
+    Returns dashboard statistics for the admin panel.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        # Validate days parameter
+        days_param = request.query_params.get('days', '7')
+        if days_param not in ['7', '30', '90']:
+            return Response(
+                {"detail": "days must be one of 7, 30, or 90"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        days = int(days_param)
+
+        # Asia/Tehran timezone
+        tehran_tz = pytz.timezone('Asia/Tehran')
+        now_tehran = timezone.now().astimezone(tehran_tz)
+        today_start = now_tehran.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Base queryset for sales (paid and not cancelled)
+        sales_qs = Order.objects.filter(
+            payment_status='paid'
+        ).exclude(status='cancelled')
+
+        # Today's stats
+        today_sales_qs = sales_qs.filter(created_at__gte=today_start)
+        today_sales = today_sales_qs.aggregate(
+            sales=Coalesce(Sum('total'), 0),
+            ordersCount=Count('id')
+        )
+        today_data = {
+            'sales': today_sales['sales'] or 0,
+            'ordersCount': today_sales['ordersCount'] or 0,
+        }
+
+        # Range stats
+        range_start = today_start - timedelta(days=days-1)
+        range_sales_qs = sales_qs.filter(created_at__gte=range_start)
+        range_sales = range_sales_qs.aggregate(
+            sales=Coalesce(Sum('total'), 0),
+            ordersCount=Count('id')
+        )
+        range_data = {
+            'days': days,
+            'ordersCount': range_sales['ordersCount'] or 0,
+            'sales': range_sales['sales'] or 0,
+        }
+
+        # Pending payment count
+        pending_payment_count = Order.objects.filter(
+            payment_status='pending'
+        ).count()
+
+        # Status counts
+        status_counts_qs = Order.objects.aggregate(
+            new=Count('id', filter=Q(status='new')),
+            processing=Count('id', filter=Q(status='processing')),
+            shipped=Count('id', filter=Q(status='shipped')),
+            delivered=Count('id', filter=Q(status='delivered')),
+            cancelled=Count('id', filter=Q(status='cancelled')),
+            total=Count('id')
+        )
+        status_counts = {
+            'new': status_counts_qs['new'] or 0,
+            'processing': status_counts_qs['processing'] or 0,
+            'shipped': status_counts_qs['shipped'] or 0,
+            'delivered': status_counts_qs['delivered'] or 0,
+            'cancelled': status_counts_qs['cancelled'] or 0,
+            'total': status_counts_qs['total'] or 0,
+        }
+
+        # Daily sales (zero-filled, no gaps)
+        daily_sales = []
+        for i in range(days):
+            day_date = range_start + timedelta(days=i)
+            day_end = day_date + timedelta(days=1)
+            day_sales = sales_qs.filter(
+                created_at__gte=day_date,
+                created_at__lt=day_end
+            ).aggregate(sales=Coalesce(Sum('total'), 0))
+            daily_sales.append({
+                'date': day_date.isoformat(),
+                'sales': day_sales['sales'] or 0,
+            })
+
+        # Latest 5 orders
+        latest_orders = Order.objects.select_related('customer').order_by('-created_at')[:5]
+        latest_orders_data = []
+        for order in latest_orders:
+            latest_orders_data.append({
+                'id': order.id,
+                'number': order.number,
+                'customerName': f"{order.first_name} {order.last_name}",
+                'city': order.city,
+                'total': order.total,
+                'status': order.status,
+            })
+
+        # Low stock products (threshold 25, active sizes only)
+        low_stock_threshold = 25
+        low_stock_products = Product.objects.filter(
+            is_active=True
+        ).prefetch_related('sizes').annotate(
+            _active_stock=Coalesce(
+                Sum('sizes__stock', filter=Q(sizes__is_active=True)),
+                0
+            )
+        ).filter(
+            _active_stock__lt=low_stock_threshold
+        ).order_by('_active_stock')[:10]
+
+        low_stock_data = {
+            'threshold': low_stock_threshold,
+            'totalStock': low_stock_products.count(),
+            'products': []
+        }
+        for product in low_stock_products:
+            first_image = product.images.first()
+            image_url = None
+            if first_image:
+                image_url = request.build_absolute_uri(first_image.image.url)
+            low_stock_data['products'].append({
+                'id': product.id,
+                'name': product.name,
+                'slug': product.slug,
+                'totalStock': product._active_stock,
+                'image': image_url,
+            })
+
+        return Response({
+            'today': today_data,
+            'range': range_data,
+            'pendingPaymentCount': pending_payment_count,
+            'statusCounts': status_counts,
+            'dailySales': daily_sales,
+            'latestOrders': latest_orders_data,
+            'lowStock': low_stock_data,
+        })
+
+
+# =============================================================================
+# Admin order views
+# =============================================================================
+
+class AdminOrderListView(generics.ListAPIView):
+    """
+    GET /api/admin/orders/
+    Paginated list of orders with filters.
+    """
+    permission_classes = [IsStaffUser]
+    serializer_class = AdminOrderListSerializer
+
+    def get_queryset(self):
+        qs = Order.objects.select_related('customer')
+
+        # Status filter
+        status = self.request.query_params.get('status')
+        if status:
+            qs = qs.filter(status=status)
+
+        # Payment status filter
+        payment_status = self.request.query_params.get('payment_status')
+        if payment_status:
+            qs = qs.filter(payment_status=payment_status)
+
+        # Search filter (order number, customer name, phone)
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(number__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(phone__icontains=search)
+            )
+
+        # Date filters (Asia/Tehran timezone)
+        date_from = self.request.query_params.get('date_from')
+        date_to = self.request.query_params.get('date_to')
+        if date_from:
+            dt = parse_datetime(date_from)
+            if dt:
+                qs = qs.filter(created_at__gte=dt)
+        if date_to:
+            dt = parse_datetime(date_to)
+            if dt:
+                qs = qs.filter(created_at__lte=dt)
+
+        return qs.order_by('-created_at')
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # Apply pagination
+        page = int(request.query_params.get('page', 1))
+        page_size = min(int(request.query_params.get('page_size', 20)), 100)
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_queryset = queryset[start:end]
+
+        serializer = self.get_serializer(page_queryset, many=True)
+
+        # Compute counts
+        base_qs = self.get_queryset()
+        counts = {
+            'all': base_qs.count(),
+            'new': base_qs.filter(status='new').count(),
+            'processing': base_qs.filter(status='processing').count(),
+            'shipped': base_qs.filter(status='shipped').count(),
+            'delivered': base_qs.filter(status='delivered').count(),
+            'cancelled': base_qs.filter(status='cancelled').count(),
+        }
+
+        # Pending payment count (ignoring status filter)
+        search = request.query_params.get('search')
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+
+        payment_pending_qs = Order.objects.select_related('customer')
+        if search:
+            payment_pending_qs = payment_pending_qs.filter(
+                Q(number__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(phone__icontains=search)
+            )
+        if date_from:
+            dt = parse_datetime(date_from)
+            if dt:
+                payment_pending_qs = payment_pending_qs.filter(created_at__gte=dt)
+        if date_to:
+            dt = parse_datetime(date_to)
+            if dt:
+                payment_pending_qs = payment_pending_qs.filter(created_at__lte=dt)
+        counts['pendingPayment'] = payment_pending_qs.filter(
+            payment_status='pending'
+        ).count()
+
+        return Response({
+            'results': serializer.data,
+            'count': queryset.count(),
+            'page': page,
+            'pageSize': page_size,
+            'counts': counts,
+        })
+
+
+class AdminOrderDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/admin/orders/<id>/
+    Full order detail.
+    """
+    permission_classes = [IsStaffUser]
+    serializer_class = AdminOrderDetailSerializer
+    queryset = Order.objects.prefetch_related('items', 'logs').select_related('customer')
+    lookup_field = 'id'
+
+
+class AdminOrderUpdateView(generics.UpdateAPIView):
+    """
+    PATCH /api/admin/orders/<id>/
+    Update order status, payment status, or note.
+    """
+    permission_classes = [IsStaffUser]
+    serializer_class = AdminOrderUpdateSerializer
+    queryset = Order.objects.all()
+    lookup_field = 'id'
+
+    def patch(self, request, *args, **kwargs):
+        order = self.get_object()
+        serializer = self.get_serializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        actor = request.user.username
+
+        if 'status' in serializer.validated_data:
+            new_status = serializer.validated_data['status']
+            try:
+                change_order_status(order, new_status, actor=actor)
+            except OrderError as exc:
+                return Response(
+                    {"detail": str(exc), "code": exc.code},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        if 'paymentStatus' in serializer.validated_data:
+            new_payment_status = serializer.validated_data['paymentStatus']
+            try:
+                set_payment_status(order, new_payment_status, actor=actor)
+            except OrderError as exc:
+                return Response(
+                    {"detail": str(exc), "code": exc.code},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        if 'note' in serializer.validated_data:
+            order.note = serializer.validated_data['note']
+            order.save(update_fields=['note'])
+
+        order.refresh_from_db()
+        return Response(AdminOrderDetailSerializer(order).data)
+
+
+class AdminOrderCreateView(APIView):
+    """
+    POST /api/admin/orders/
+    Manual order creation by admin.
+    """
+    permission_classes = [IsStaffUser]
+
+    def post(self, request):
+        serializer = AdminOrderCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "اطلاعات وارد شده معتبر نیست.",
+                 "code": "validation",
+                 "fields": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            order = create_order(
+                serializer.validated_data,
+                actor=request.user.username
+            )
+        except OrderError as exc:
+            return Response(
+                {"detail": str(exc), "code": exc.code, "fields": exc.fields},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Override payment status if specified
+        if serializer.validated_data.get('payment_status') != 'pending':
+            try:
+                set_payment_status(
+                    order,
+                    serializer.validated_data['payment_status'],
+                    actor=request.user.username
+                )
+            except OrderError as exc:
+                return Response(
+                    {"detail": str(exc), "code": exc.code},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        order.refresh_from_db()
+        return Response(
+            AdminOrderDetailSerializer(order).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AdminOrderExportView(APIView):
+    """
+    GET /api/admin/orders/export/
+    Export orders to Excel with same filters.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        # Build queryset with same filters as list view
+        qs = Order.objects.select_related('customer').prefetch_related('items')
+
+        status = request.query_params.get('status')
+        if status:
+            qs = qs.filter(status=status)
+
+        payment_status = request.query_params.get('payment_status')
+        if payment_status:
+            qs = qs.filter(payment_status=payment_status)
+
+        search = request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(number__icontains=search) |
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(phone__icontains=search)
+            )
+
+        date_from = request.query_params.get('date_from')
+        date_to = request.query_params.get('date_to')
+        if date_from:
+            dt = parse_datetime(date_from)
+            if dt:
+                qs = qs.filter(created_at__gte=dt)
+        if date_to:
+            dt = parse_datetime(date_to)
+            if dt:
+                qs = qs.filter(created_at__lte=dt)
+
+        qs = qs.order_by('-created_at')
+
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "سفارشات"
+
+        # Set RTL and Persian font
+        ws.sheet_properties.pageSetUpPr.paperSize = None
+        ws.right_to_left = True
+
+        # Headers
+        headers = [
+            "شماره", "تاریخ", "مشتری", "تلفن", "شهر", "آدرس",
+            "مبلغ", "وضعیت", "پرداخت", "اقلام"
+        ]
+        ws.append(headers)
+
+        # Style headers
+        header_font = Font(name='Calibri', bold=True, size=11)
+        for col in range(1, len(headers) + 1):
+            ws.cell(row=1, column=col).font = header_font
+            ws.cell(row=1, column=col).alignment = Alignment(horizontal='center')
+
+        # Data rows
+        for order in qs:
+            # Convert to Jalali date
+            jd = jdatetime.datetime.fromgregorian(datetime=order.created_at)
+            date_str = jd.strftime('%Y/%m/%d')
+
+            # Build items string
+            items_str = ", ".join([
+                f"{item.product_name} ({item.size_us}) ×{item.quantity}"
+                for item in order.items.all()
+            ])
+
+            row = [
+                order.number or '',
+                date_str,
+                f"{order.first_name} {order.last_name}",
+                order.phone,
+                order.city,
+                order.address,
+                order.total,
+                order.status,
+                order.payment_status,
+                items_str,
+            ]
+            ws.append(row)
+
+        # Auto-adjust column widths
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column].width = adjusted_width
+
+        # Prepare response
+        from django.http import HttpResponse
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="orders.xlsx"'
+        wb.save(response)
+        return response
+
+
+class AdminOrderSummaryView(APIView):
+    """
+    GET /api/admin/orders/summary/
+    Returns { newCount, pendingPaymentCount } for sidebar badge.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        new_count = Order.objects.filter(status='new').count()
+        pending_payment_count = Order.objects.filter(
+            payment_status='pending'
+        ).count()
+        return Response({
+            'newCount': new_count,
+            'pendingPaymentCount': pending_payment_count,
+        })
+
+
+# =============================================================================
+# Admin customer views
+# =============================================================================
+
+class AdminCustomerListView(generics.ListAPIView):
+    """
+    GET /api/admin/customers/
+    Paginated list of customers with filters.
+    """
+    permission_classes = [IsStaffUser]
+    serializer_class = AdminCustomerListSerializer
+
+    def get_queryset(self):
+        # Annotate with order counts and total spent
+        qs = Customer.objects.annotate(
+            orders_count=Count('orders'),
+            total_spent=Coalesce(
+                Sum(
+                    'orders__total',
+                    filter=Q(orders__payment_status='paid') & ~Q(orders__status='cancelled')
+                ),
+                0
+            ),
+            last_order_at=Coalesce(
+                Max('orders__created_at'),
+                None
+            )
+        )
+
+        # Search filter (name or phone)
+        search = self.request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(phone__icontains=search)
+            )
+
+        # City filter
+        city = self.request.query_params.get('city')
+        if city:
+            qs = qs.filter(city__icontains=city)
+
+        # Type filter (new = exactly one order, returning = more than one)
+        customer_type = self.request.query_params.get('type')
+        if customer_type == 'new':
+            qs = qs.filter(orders_count=1)
+        elif customer_type == 'returning':
+            qs = qs.filter(orders_count__gt=1)
+
+        # Ordering
+        ordering = self.request.query_params.get('ordering', 'last_order')
+        if ordering == 'last_order':
+            qs = qs.order_by('-last_order_at')
+        elif ordering == 'total_spent':
+            qs = qs.order_by('-total_spent')
+        elif ordering == 'orders_count':
+            qs = qs.order_by('-orders_count')
+        else:
+            qs = qs.order_by('-last_order_at')
+
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        # Apply pagination
+        page = int(request.query_params.get('page', 1))
+        page_size = min(int(request.query_params.get('page_size', 20)), 100)
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_queryset = queryset[start:end]
+
+        serializer = self.get_serializer(page_queryset, many=True)
+
+        # Compute counts
+        base_qs = Customer.objects.annotate(
+            orders_count=Count('orders')
+        )
+        counts = {
+            'all': base_qs.count(),
+            'new': base_qs.filter(orders_count=1).count(),
+            'returning': base_qs.filter(orders_count__gt=1).count(),
+        }
+
+        # Get distinct cities
+        cities = list(Customer.objects.values_list('city', flat=True).distinct().order_by('city'))
+
+        # Summary aggregates
+        now = timezone.now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        total_customers = base_qs.count()
+        new_this_month = Customer.objects.filter(created_at__gte=month_start).count()
+        returning_count = base_qs.filter(orders_count__gt=1).count()
+        avg_spent = Customer.objects.annotate(
+            total_spent=Coalesce(
+                Sum(
+                    'orders__total',
+                    filter=Q(orders__payment_status='paid') & ~Q(orders__status='cancelled')
+                ),
+                0
+            )
+        ).aggregate(avg=Avg('total_spent'))['avg'] or 0
+
+        return Response({
+            'results': serializer.data,
+            'count': queryset.count(),
+            'page': page,
+            'pageSize': page_size,
+            'counts': counts,
+            'cities': cities,
+            'summary': {
+                'totalCustomers': total_customers,
+                'newThisMonth': new_this_month,
+                'returningCount': returning_count,
+                'averageSpend': int(avg_spent),
+            },
+        })
+
+
+class AdminCustomerDetailView(generics.RetrieveAPIView):
+    """
+    GET /api/admin/customers/<id>/
+    Full customer detail with orders.
+    """
+    permission_classes = [IsStaffUser]
+    serializer_class = AdminCustomerDetailSerializer
+    queryset = Customer.objects.prefetch_related('orders__items')
+    lookup_field = 'id'
+
+
+class AdminCustomerCreateView(generics.CreateAPIView):
+    """
+    POST /api/admin/customers/
+    Create a customer manually.
+    """
+    permission_classes = [IsStaffUser]
+    serializer_class = AdminCustomerCreateSerializer
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        customer = Customer.objects.create(
+            first_name=serializer.validated_data['first_name'],
+            last_name=serializer.validated_data['last_name'],
+            phone=serializer.validated_data['phone'],
+            email=serializer.validated_data.get('email', ''),
+            city=serializer.validated_data.get('city', ''),
+        )
+
+        return Response(
+            AdminCustomerDetailSerializer(customer).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class AdminCustomerUpdateView(generics.UpdateAPIView):
+    """
+    PATCH /api/admin/customers/<id>/
+    Update customer information.
+    """
+    permission_classes = [IsStaffUser]
+    serializer_class = AdminCustomerUpdateSerializer
+    queryset = Customer.objects.all()
+    lookup_field = 'id'
+
+    def patch(self, request, *args, **kwargs):
+        customer = self.get_object()
+        serializer = self.get_serializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+
+        if 'first_name' in serializer.validated_data:
+            customer.first_name = serializer.validated_data['first_name']
+        if 'last_name' in serializer.validated_data:
+            customer.last_name = serializer.validated_data['last_name']
+        if 'email' in serializer.validated_data:
+            customer.email = serializer.validated_data['email']
+        if 'city' in serializer.validated_data:
+            customer.city = serializer.validated_data['city']
+
+        customer.save()
+        return Response(AdminCustomerDetailSerializer(customer).data)
+
+
+class AdminCustomerExportView(APIView):
+    """
+    GET /api/admin/customers/export/
+    Export customers to Excel.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        # Build queryset with same filters as list view
+        qs = Customer.objects.annotate(
+            orders_count=Count('orders'),
+            total_spent=Coalesce(
+                Sum(
+                    'orders__total',
+                    filter=Q(orders__payment_status='paid') & ~Q(orders__status='cancelled')
+                ),
+                0
+            ),
+            last_order_at=Coalesce(
+                Max('orders__created_at'),
+                None
+            )
+        )
+
+        search = request.query_params.get('search')
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search) |
+                Q(last_name__icontains=search) |
+                Q(phone__icontains=search)
+            )
+
+        city = request.query_params.get('city')
+        if city:
+            qs = qs.filter(city__icontains=city)
+
+        customer_type = request.query_params.get('type')
+        if customer_type == 'new':
+            qs = qs.filter(orders_count=1)
+        elif customer_type == 'returning':
+            qs = qs.filter(orders_count__gt=1)
+
+        ordering = request.query_params.get('ordering', 'last_order')
+        if ordering == 'last_order':
+            qs = qs.order_by('-last_order_at')
+        elif ordering == 'total_spent':
+            qs = qs.order_by('-total_spent')
+        elif ordering == 'orders_count':
+            qs = qs.order_by('-orders_count')
+        else:
+            qs = qs.order_by('-last_order_at')
+
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "مشتریان"
+
+        # Set RTL
+        ws.right_to_left = True
+
+        # Headers
+        headers = [
+            "نام", "تلفن", "ایمیل", "شهر", "تعداد سفارش", "مجموع خرید", "آخرین سفارش"
+        ]
+        ws.append(headers)
+
+        # Style headers
+        header_font = Font(name='Calibri', bold=True, size=11)
+        for col in range(1, len(headers) + 1):
+            ws.cell(row=1, column=col).font = header_font
+            ws.cell(row=1, column=col).alignment = Alignment(horizontal='center')
+
+        # Data rows
+        for customer in qs:
+            last_order_date = ''
+            if customer.last_order_at:
+                jd = jdatetime.datetime.fromgregorian(datetime=customer.last_order_at)
+                last_order_date = jd.strftime('%Y/%m/%d')
+
+            row = [
+                f"{customer.first_name} {customer.last_name}",
+                customer.phone,
+                customer.email,
+                customer.city,
+                customer.orders_count,
+                customer.total_spent,
+                last_order_date,
+            ]
+            ws.append(row)
+
+        # Auto-adjust column widths
+        for col in ws.columns:
+            max_length = 0
+            column = col[0].column_letter
+            for cell in col:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = min(max_length + 2, 50)
+            ws.column_dimensions[column].width = adjusted_width
+
+        # Prepare response
+        from django.http import HttpResponse
+        response = HttpResponse(
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )
+        response['Content-Disposition'] = 'attachment; filename="customers.xlsx"'
+        wb.save(response)
+        return response

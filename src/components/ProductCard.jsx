@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { formatPrice } from '../utils/format'
-import { useCart } from '../contexts/CartContext'
 import { getProductImage } from '../utils/productImages'
 
 export function getBadgeLabel(badge, t) {
@@ -14,21 +13,11 @@ export function getBadgeLabel(badge, t) {
 
 export default function ProductCard({ product, variant = 'default' }) {
   const { t } = useTranslation()
-  const { addItem } = useCart()
   const { nameKey, price, oldPrice, badge, slug } = product
   const isListing = variant === 'listing'
   const imageUrl = getProductImage(product)
   const displayName = product.name || t(nameKey)
   const badgeLabel = getBadgeLabel(badge, t)
-
-  const [added, setAdded] = useState(false)
-
-  const handleAddToCart = (e) => {
-    e.stopPropagation()
-    addItem(product)
-    setAdded(true)
-    setTimeout(() => setAdded(false), 1500)
-  }
 
   const listingClasses = 'text-[10px] py-[4px]'
   const defaultClasses = 'text-[11px] py-[6px]'
@@ -64,12 +53,12 @@ export default function ProductCard({ product, variant = 'default' }) {
           </span>
         )}
       </div>
-      <button
-        className={`mt-[8px] pill ${isListing ? listingClasses : defaultClasses}`}
-        onClick={handleAddToCart}
+      <Link
+        to={`/product/${slug}`}
+        className={`mt-[8px] pill inline-flex items-center justify-center ${isListing ? listingClasses : defaultClasses}`}
       >
-        {added ? t('products.added') : t('products.addToCart')}
-      </button>
+        {t('products.viewDetails')}
+      </Link>
     </div>
   )
 }

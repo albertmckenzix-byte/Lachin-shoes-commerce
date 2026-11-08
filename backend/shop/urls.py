@@ -1,9 +1,21 @@
 from django.urls import path
 
 from .views import (
+    AdminCustomerCreateView,
+    AdminCustomerDetailView,
+    AdminCustomerExportView,
+    AdminCustomerListView,
+    AdminCustomerUpdateView,
+    AdminDashboardView,
     AdminLoginView,
     AdminLogoutView,
     AdminMeView,
+    AdminOrderCreateView,
+    AdminOrderDetailView,
+    AdminOrderExportView,
+    AdminOrderListView,
+    AdminOrderSummaryView,
+    AdminOrderUpdateView,
     AdminProductDetailView,
     AdminProductImageDeleteView,
     AdminProductImageReorderView,
@@ -15,20 +27,36 @@ from .views import (
     OrderDetailPublicView,
     ProductDetailView,
     ProductListView,
+    SettingsView,
 )
 
 urlpatterns = [
     path('products/', ProductListView.as_view(), name='product-list'),
     path('products/<slug:slug>/', ProductDetailView.as_view(), name='product-detail'),
+    path('settings/', SettingsView.as_view(), name='settings'),
     path('admin/login/', AdminLoginView.as_view(), name='admin-login'),
     path('admin/logout/', AdminLogoutView.as_view(), name='admin-logout'),
     path('admin/me/', AdminMeView.as_view(), name='admin-me'),
+    path('admin/dashboard/', AdminDashboardView.as_view(), name='admin-dashboard'),
     path('admin/products/', AdminProductListCreateView.as_view(), name='admin-product-list'),
     path('admin/products/<int:pk>/', AdminProductDetailView.as_view(), name='admin-product-detail'),
     path('admin/products/<int:pk>/images/', AdminProductImageUploadView.as_view(), name='admin-product-images'),
     path('admin/products/<int:pk>/images/reorder/', AdminProductImageReorderView.as_view(), name='admin-product-images-reorder'),
     path('admin/products/<int:pk>/images/<int:image_id>/', AdminProductImageDeleteView.as_view(), name='admin-product-image-delete'),
     path('admin/sizes/', AdminSizeTableView.as_view(), name='admin-size-table'),
+    # Admin order endpoints
+    path('admin/orders/', AdminOrderListView.as_view(), name='admin-order-list'),
+    path('admin/orders/summary/', AdminOrderSummaryView.as_view(), name='admin-order-summary'),
+    path('admin/orders/export/', AdminOrderExportView.as_view(), name='admin-order-export'),
+    path('admin/orders/<int:id>/', AdminOrderDetailView.as_view(), name='admin-order-detail'),
+    path('admin/orders/<int:id>/update/', AdminOrderUpdateView.as_view(), name='admin-order-update'),
+    path('admin/orders/create/', AdminOrderCreateView.as_view(), name='admin-order-create'),
+    # Admin customer endpoints
+    path('admin/customers/', AdminCustomerListView.as_view(), name='admin-customer-list'),
+    path('admin/customers/export/', AdminCustomerExportView.as_view(), name='admin-customer-export'),
+    path('admin/customers/<int:id>/', AdminCustomerDetailView.as_view(), name='admin-customer-detail'),
+    path('admin/customers/create/', AdminCustomerCreateView.as_view(), name='admin-customer-create'),
+    path('admin/customers/<int:id>/update/', AdminCustomerUpdateView.as_view(), name='admin-customer-update'),
     # Order endpoints
     path('orders/', OrderCreateView.as_view(), name='order-create'),
     path('orders/<int:number>/', OrderDetailPublicView.as_view(), name='order-detail'),

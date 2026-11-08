@@ -1,82 +1,134 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useCart } from '../contexts/CartContext'
+import { useProducts } from '../context/ProductsContext'
 import InformationForm from '../components/checkout/InformationForm'
 import DeliveryOptions from '../components/checkout/DeliveryOptions'
 import PaymentOptions from '../components/checkout/PaymentOptions'
 import ShoppingBag from '../components/checkout/ShoppingBag'
 import { formatPrice } from '../utils/format'
+import { createOrder } from '../api/orders'
+import { getSettings } from '../api/settings'
 
 export default function Checkout() {
   const { t } = useTranslation()
-  const { clearCart } = useCart()
+  const { clearCart, items } = useCart()
+  const { getBySlug } = useProducts()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     phone: '',
     email: '',
-    country: '',
+    country: 'Iran',
     city: '',
     address: '',
-    zipCode: '',
+    postalCode: '',
     agreeDataProcessing: false,
-    cardNumber: '',
-    cardholderName: '',
-    expiry: '',
-    cvv: '',
-    agreeDataProcessingPayment: false,
   })
   const [errors, setErrors] = useState({})
   const [selectedDelivery, setSelectedDelivery] = useState('standard')
-  const [selectedPayment, setSelectedPayment] = useState('card')
-  const [submitted, setSubmitted] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState('')
   const [promoCode, setPromoCode] = useState('')
   const [discount, setDiscount] = useState(0)
+  const [settings, setSettings] = useState({
+    freeShippingThreshold: 5000000,
+    standardFee: 0,
+    expressFee: 500000,
+  })
 
-  const handleSubmit = () => {
-    clearCart()
-    setSubmitted(true)
-    setFormData({
-      firstName: '',
-      lastName: '',
-      phone: '',
-      email: '',
-      country: '',
-      city: '',
-      address: '',
-      zipCode: '',
-      agreeDataProcessing: false,
-      cardNumber: '',
-      cardholderName: '',
-      expiry: '',
-      cvv: '',
-      agreeDataProcessingPayment: false,
+  useEffect(() => {
+    loadSettings()
+  }, [])
+
+  const loadSettings = async () => {
+    try {
+      const data = await getSettings()
+      setSettings(data)
+    } catch (err) {
+      console.error('Failed to load settings:', err)
+    }
+  }
+
+  const handleSubmit = async () => {
+    // Check for stock issues
+    const hasStockIssues = items.some(item => {
+      const product = getBySlug(item.slug)
+      if (!product) return true
+      const sizeEntry = product.sizes?.find(s => Number(s.us) === Number(item.sizeUs))
+      if (!sizeEntry || !sizeEntry.is_active) return true
+      return item.quantity > sizeEntry.stock
     })
-    setPromoCode('')
-    setDiscount(0)
+
+    if (hasStockIssues) {
+      setSubmitError('لطفاً مشکل موجودی سبد خرید را حل کنید')
+      return
+    }
+
+    setIsSubmitting(true)
+    setSubmitError('')
+
+    try {
+      const orderItems = items.map(item => ({
+        slug: item.slug,
+        sizeUs: item.sizeUs,
+        quantity: item.quantity,
+      }))
+
+      const payload = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+        email: formData.email,
+        country: formData.country,
+        city: formData.city,
+        address: formData.address,
+        postalCode: formData.postalCode,
+        deliveryMethod: selectedDelivery,
+        couponCode: promoCode,
+        note: '',
+        items: orderItems,
+      }
+
+      const result = await createOrder(payload)
+
+      if (result.success) {
+        clearCart()
+        navigate(`/order/${result.data.number}?token=${result.data.token}`)
+      } else {
+        setSubmitError(result.error.detail)
+        if (result.error.fields) {
+          setErrors(result.error.fields)
+        }
+      }
+    } catch (err) {
+      setSubmitError('خطا در ارتباط با سرور، دوباره تلاش کنید')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
-  const { items, count, subtotal } = useCart()
-  const shippingCost = selectedDelivery === 'express' ? 50 : 0
+  const { count, subtotal } = useCart()
+  const shippingCost = selectedDelivery === 'express' ? settings.expressFee : 0
+  const isFreeShipping = subtotal >= settings.freeShippingThreshold
+  const finalShippingCost = selectedDelivery === 'standard' && isFreeShipping ? 0 : shippingCost
   const discountAmount = discount || 0
-  const total = subtotal + shippingCost - discountAmount
-  const isPayDisabled = items.length === 0
+  const total = subtotal + finalShippingCost - discountAmount
 
-  if (submitted) {
-    return (
-      <div className="min-h-screen bg-white pb-24" dir="rtl">
-        <div className="ps-6 pe-6 pt-[40px]">
-          <h1 className="font-extrabold leading-[1.3] tracking-[0] text-black text-start mb-[40px]" style={{ fontSize: 'clamp(40px, 5.5vw, 88px)' }}>
-            {t('checkout.title')}
-          </h1>
-          <div className="text-center py-20">
-            <p className="text-[24px] font-normal text-black leading-[1.3]">{t('checkout.successMessage')}</p>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  // Check for stock issues
+  const hasStockIssues = items.some(item => {
+    const product = getBySlug(item.slug)
+    if (!product) return true
+    const sizeEntry = product.sizes?.find(s => Number(s.us) === Number(item.sizeUs))
+    if (!sizeEntry || !sizeEntry.is_active) return true
+    return item.quantity > sizeEntry.stock
+  })
+
+  const isPayDisabled = items.length === 0 || hasStockIssues
 
   return (
     <div className="min-h-screen bg-white pb-24" dir="rtl">
@@ -84,6 +136,12 @@ export default function Checkout() {
         <h1 className="font-extrabold leading-[1.3] tracking-[0] text-black text-start mb-[40px]" style={{ fontSize: 'clamp(40px, 5.5vw, 88px)' }}>
           {t('checkout.title')}
         </h1>
+
+        {submitError && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-[4px]" role="alert">
+            <p className="text-[13px] text-red-800">{submitError}</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-[60px] items-start">
           {/* Form Column - Right side in RTL (order-1 on lg) */}
@@ -93,23 +151,18 @@ export default function Checkout() {
               setFormData={setFormData}
               errors={errors}
               setErrors={setErrors}
-              setSubmitted={setSubmitted}
             />
             <DeliveryOptions
               selectedMethod={selectedDelivery}
               setSelectedMethod={setSelectedDelivery}
+              freeShippingThreshold={settings.freeShippingThreshold}
+              standardFee={settings.standardFee}
+              expressFee={settings.expressFee}
             />
             <PaymentOptions
-              selectedMethod={selectedPayment}
-              setSelectedMethod={setSelectedPayment}
-              formData={formData}
-              setFormData={setFormData}
-              errors={errors}
-              setErrors={setErrors}
               onSubmit={handleSubmit}
               isPayDisabled={isPayDisabled}
-              total={total}
-              itemsCount={count}
+              isSubmitting={isSubmitting}
             />
           </div>
 
@@ -123,6 +176,10 @@ export default function Checkout() {
               selectedDelivery={selectedDelivery}
               total={total}
               isPayDisabled={isPayDisabled}
+              onCouponApplied={(percent, discountAmount) => {
+                // Optional: handle coupon applied callback
+              }}
+              settings={settings}
             />
           </div>
         </div>
@@ -136,14 +193,16 @@ export default function Checkout() {
             </div>
             <div className="w-full sm:w-auto flex flex-col items-end gap-2">
               <button
-                disabled={isPayDisabled}
+                disabled={isPayDisabled || isSubmitting}
                 className="w-full sm:w-auto h-[44px] px-6 bg-black text-white text-[12px] font-semibold hover:bg-[#222] transition-colors rounded-none disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-black whitespace-nowrap"
                 onClick={handleSubmit}
               >
-                {t('checkout.payAndPlaceOrder')}
+                {isSubmitting ? 'در حال ثبت...' : t('checkout.payAndPlaceOrder')}
               </button>
               {isPayDisabled && (
-                <p className="text-[11px] text-gray-500 text-center w-full sm:hidden">{t('checkout.bagEmpty')}</p>
+                <p className="text-[11px] text-gray-500 text-center w-full sm:hidden">
+                  {items.length === 0 ? t('checkout.bagEmpty') : 'مشکل موجودی سبد خرید'}
+                </p>
               )}
             </div>
           </div>
