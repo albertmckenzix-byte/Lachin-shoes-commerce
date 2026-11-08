@@ -1,22 +1,24 @@
 # Shared AI Project Memory
 
-> **Purpose:** The canonical, human-readable context for every developer and AI coding agent working on Lachin Shoes Commerce.
+> **Purpose:** The canonical, human-readable project brain and Obsidian Vault for every developer and AI coding agent working on Lachin Shoes Commerce.
 >
 > **Repository:** [Lachin-shoes-commerce](https://github.com/albertmckenzix-byte/Lachin-shoes-commerce)
+> **Vault root:** `project-memory/`
 > **Memory branch:** `feature/shared-ai-memory`
 
 ## Start here
 
-1. Read the root `AGENTS.md`.
-2. Read [Agent Collaboration Protocol](AGENT-COLLABORATION.md).
+1. Open `project-memory/` as an Obsidian Vault and start with [Home](Home.md).
+2. Read the root `AGENTS.md` and [Agent Collaboration Protocol](AGENT-COLLABORATION.md).
 3. Read [Project Overview](01-PROJECT-OVERVIEW.md), [Tech Stack](02-TECH-STACK.md), and [Current Status](development/CURRENT-STATUS.md).
-4. Before changing a feature, read its relevant frontend/backend notes and the [API contracts](integration/API-CONTRACTS.md).
-5. Connect to the local `lachin-agent-bridge` MCP server and check your inbox and shared task list.
-6. Inspect the current code. These notes are context, not a substitute for source code.
-7. After meaningful work, update the relevant memory files in the same branch/change where practical and record the work in the MCP activity feed.
+4. Before changing a feature, read its relevant frontend/backend notes and [API contracts](integration/API-CONTRACTS.md).
+5. Connect to the local `lachin-agent-bridge` MCP server; check your inbox, recent activity, and shared task list.
+6. Claim a task before editing. Inspect the current code and Git status.
+7. After meaningful work, update the relevant Vault notes and record the work in the MCP activity feed.
 
 ## Memory map
 
+- [Vault dashboard](Home.md)
 - [Agent collaboration](AGENT-COLLABORATION.md)
 - [Local MCP bridge tools](agent-bridge/README.md)
 - [Project overview](01-PROJECT-OVERVIEW.md)
@@ -38,7 +40,7 @@ When information conflicts, use this order:
 
 1. Current executable source code and tests.
 2. Current migrations and API implementation.
-3. Explicit, recent decisions recorded in this memory.
+3. Explicit, recent decisions recorded in this Vault.
 4. Older notes, TODOs, and assumptions.
 
 If a note is stale, correct it rather than silently following it. Record unresolved conflicts in `development/KNOWN-ISSUES.md`.
