@@ -41,3 +41,14 @@ After each significant task, update this file with:
 - Remaining blockers and next concrete step.
 
 Never mark an item complete based only on a code stub, model definition, UI, or agent assertion.
+
+
+## Shared AI collaboration infrastructure
+
+- **Observed in branch:** a Python standard-library MCP server exists at `scripts/agent_bridge_mcp.py`.
+- **Observed in branch:** workspace MCP configurations exist for Kilo Code (`.kilo/kilo.json`) and Antigravity (`.agents/mcp_config.json`).
+- **Observed in branch:** the bridge implements shared context retrieval, agent inbox/messages, task creation/claim/status, activity logging, and architecture-decision logging.
+- **Observed in branch:** runtime state is configured to live in `.agent-bridge/runtime/agent-bridge.sqlite3`, excluded by `.agent-bridge/.gitignore`.
+- **Unverified:** MCP client discovery, Python launch path, cross-client SQLite access, and end-to-end message/task exchange have not yet been tested in the user's local IDEs.
+- **Important limitation:** this local bus is shared only when both IDEs open the same local checkout. It does not wake an idle agent automatically. Separate clones/computers require a hosted remote MCP service or a separate synchronization layer.
+- **Next verification:** open this same repository folder in both IDEs, restart/reload MCP servers, verify the bridge appears in each client, then test message send/read, task claim, and activity feed.
