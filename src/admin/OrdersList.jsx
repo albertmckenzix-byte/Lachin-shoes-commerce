@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { formatNumber } from '../utils/format'
 import {
@@ -8,6 +8,8 @@ import {
   PAYMENT_STATUS_LABELS,
   toJalali,
 } from '../data/orders'
+import { api } from './api'
+import { printOrderInvoice } from '../utils/printInvoice'
 
 // ─── Style constants ─────────────────────────────────────────────────────────
 
@@ -79,7 +81,7 @@ function StatCard({ label, value }) {
 
 // ─── Order detail panel ───────────────────────────────────────────────────────
 
-function OrderDetailPanel({ order, onStatusAdvance, onCancel }) {
+function OrderDetailPanel({ order, onStatusAdvance, onCancel, onPrint }) {
   if (!order) {
     return (
       <div className="flex flex-col items-center justify-center rounded-lg border border-[#E6E6E3] bg-white px-6 py-16 text-center min-[1100px]:sticky min-[1100px]:top-7">
@@ -227,7 +229,8 @@ function OrderDetailPanel({ order, onStatusAdvance, onCancel }) {
           <div className="flex gap-2">
             <button
               type="button"
-              className="flex h-11 flex-1 items-center justify-center rounded-full border-[1.5px] border-[#D9D9D6] text-sm font-semibold text-[#111] hover:border-black"
+              onClick={() => (onPrint ? onPrint(order) : printOrderInvoice(order))}
+              className="flex h-11 flex-1 items-center justify-center rounded-full border-[1.5px] border-[#D9D9D6] text-sm font-semibold text-[#111] hover:border-black active:bg-gray-100 transition-colors"
             >
               چاپ فاکتور
             </button>
@@ -254,8 +257,8 @@ function getNow() {
 
 export default function OrdersList() {
   const navigate = useNavigate()
-  // Local mutable copy of orders (for status updates)
   const [orders, setOrders] = useState(ORDERS)
+  const [loadingOrders, setLoadingOrders] = useState(true)
 
   const [activeTab, setActiveTab] = useState('all')
   const [search, setSearch] = useState('')
@@ -264,6 +267,25 @@ export default function OrdersList() {
   const [dateFilter, setDateFilter] = useState('all')
   const [page, setPage] = useState(1)
   const [selectedId, setSelectedId] = useState(null)
+
+  const loadOrders = useCallback(async () => {
+    try {
+      const data = await api('/admin/orders/')
+      if (Array.isArray(data) && data.length > 0) {
+        setOrders(data)
+      } else {
+        setOrders(ORDERS)
+      }
+    } catch {
+      setOrders(ORDERS)
+    } finally {
+      setLoadingOrders(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadOrders()
+  }, [loadOrders])
 
   // Debounce search
   const handleSearchChange = useCallback((e) => {
@@ -289,7 +311,7 @@ export default function OrdersList() {
     const shippedThisWeek = orders.filter(
       (o) => o.status === 'shipped' && new Date(o.createdAt) >= weekAgo
     )
-    const todaySales = todayOrders.reduce((s, o) => s + o.total, 0)
+    const todaySales = todayOrders.reduce((s, o) => s + (o.total || 0), 0)
 
     return {
       todayCount: todayOrders.length,
@@ -308,9 +330,10 @@ export default function OrdersList() {
       if (activeTab !== 'all' && o.status !== activeTab) return false
       if (paymentFilter && o.paymentStatus !== paymentFilter) return false
       if (q) {
-        const matchNum = o.orderNumber.toLowerCase().includes(q)
-        const matchName = o.customer.name.toLowerCase().includes(q)
-        if (!matchNum && !matchName) return false
+        const orderNum = (o.orderNumber || String(o.number || o.id)).toLowerCase()
+        const custName = (o.customer?.name || '').toLowerCase()
+        const custPhone = (o.customer?.phone || '').toLowerCase()
+        if (!orderNum.includes(q) && !custName.includes(q) && !custPhone.includes(q)) return false
       }
       if (dateFilter !== 'all') {
         const created = new Date(o.createdAt)
@@ -346,32 +369,60 @@ export default function OrdersList() {
 
   // ── Selected order ─────────────────────────────────────────────────────────
   const selectedOrder = useMemo(
-    () => orders.find((o) => o.id === selectedId) || null,
+    () => orders.find((o) => o.id === selectedId || o.number === selectedId) || null,
     [orders, selectedId]
   )
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  const handleStatusAdvance = useCallback((id) => {
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (o.id !== id) return o
-        const next = NEXT_STATUS[o.status]
-        if (!next) return o
-        return { ...o, status: next }
-      })
-    )
-  }, [])
+  const handleStatusAdvance = useCallback(async (id) => {
+    const target = orders.find((o) => o.id === id || o.number === id)
+    if (!target) return
+    const next = NEXT_STATUS[target.status]
+    if (!next) return
 
-  const handleCancel = useCallback((id) => {
-    if (!window.confirm('این سفارش لغو شود؟')) return
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === id
-          ? { ...o, status: 'cancelled', paymentStatus: o.paymentStatus === 'paid' ? 'refunded' : o.paymentStatus }
-          : o
+    const num = target.number || target.id
+    try {
+      const updated = await api(`/admin/orders/${num}/`, {
+        method: 'PATCH',
+        body: { status: next },
+      })
+      setOrders((prev) =>
+        prev.map((o) => (o.id === id || o.number === id ? { ...o, ...updated } : o))
       )
-    )
-  }, [])
+    } catch {
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (o.id !== id && o.number !== id) return o
+          return { ...o, status: next }
+        })
+      )
+    }
+  }, [orders])
+
+  const handleCancel = useCallback(async (id) => {
+    if (!window.confirm('این سفارش لغو شود؟')) return
+    const target = orders.find((o) => o.id === id || o.number === id)
+    if (!target) return
+
+    const num = target.number || target.id
+    try {
+      const updated = await api(`/admin/orders/${num}/`, {
+        method: 'PATCH',
+        body: { status: 'cancelled' },
+      })
+      setOrders((prev) =>
+        prev.map((o) => (o.id === id || o.number === id ? { ...o, ...updated } : o))
+      )
+    } catch {
+      setOrders((prev) =>
+        prev.map((o) =>
+          (o.id === id || o.number === id)
+            ? { ...o, status: 'cancelled', paymentStatus: o.paymentStatus === 'paid' ? 'refunded' : o.paymentStatus }
+            : o
+        )
+      )
+    }
+  }, [orders])
 
   // ── CSV export ─────────────────────────────────────────────────────────────
   const handleExportCsv = () => {
@@ -624,6 +675,7 @@ export default function OrdersList() {
             order={selectedOrder}
             onStatusAdvance={handleStatusAdvance}
             onCancel={handleCancel}
+            onPrint={printOrderInvoice}
           />
         </div>
       </div>

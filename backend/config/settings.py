@@ -29,7 +29,18 @@ SECRET_KEY = os.environ.get(
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.environ.get('DJANGO_DEBUG', 'True') == 'True'
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*'] if DEBUG else ['127.0.0.1', 'localhost', 'testserver']
+
+# Frontend & Backend Base URLs
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+BACKEND_URL = os.environ.get('BACKEND_URL', 'http://localhost:8000')
+
+# Payment Gateway (Zarinpal)
+ZARINPAL_MERCHANT_ID = os.environ.get('ZARINPAL_MERCHANT_ID', '')
+ZARINPAL_SANDBOX = os.environ.get('ZARINPAL_SANDBOX', 'True') == 'True'
+
+# SMS Provider (e.g. Kavenegar)
+KAVENEGAR_API_KEY = os.environ.get('KAVENEGAR_API_KEY', '')
 
 CORS_ALLOWED_ORIGINS = [
     'http://localhost:5173',

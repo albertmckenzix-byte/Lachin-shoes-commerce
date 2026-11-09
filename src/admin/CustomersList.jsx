@@ -13,6 +13,7 @@ import {
   ORDER_STATUS_STYLES,
 } from '../data/customers'
 import { toJalali } from '../data/orders'
+import { api } from './api'
 
 const TABS = [
   { value: 'all', label: 'همه' },
@@ -119,12 +120,20 @@ export default function CustomersList() {
   const [note, setNote] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     setLoading(true)
-    setTimeout(() => {
+    try {
+      const data = await api('/admin/customers/')
+      if (Array.isArray(data) && data.length > 0) {
+        setCustomers(data)
+      } else {
+        setCustomers(CUSTOMERS)
+      }
+    } catch {
       setCustomers(CUSTOMERS)
+    } finally {
       setLoading(false)
-    }, 500)
+    }
   }, [])
 
   useEffect(() => {

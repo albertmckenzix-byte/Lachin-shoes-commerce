@@ -1,7 +1,10 @@
+from django.conf import settings
 from django.contrib.auth import authenticate
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.db.models.functions import Coalesce
+from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from PIL import Image
 from rest_framework import generics, status
 from rest_framework.authtoken.models import Token
@@ -11,11 +14,13 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from rest_framework.views import APIView
 
-from .models import Coupon, Order, Product, ProductImage
+from .models import Coupon, Customer, Order, Product, ProductImage, ProductSize
 from .permissions import IsStaffUser
 from .serializers import (
+    AdminCustomerSerializer,
     AdminLoginSerializer,
     AdminMeSerializer,
+    AdminOrderSerializer,
     AdminProductImageSerializer,
     AdminProductListSerializer,
     AdminProductSerializer,
@@ -25,7 +30,13 @@ from .serializers import (
     OrderPublicSerializer,
     PublicProductSerializer,
 )
-from .services.orders import OrderError, create_order
+from .services.orders import (
+    OrderError,
+    change_order_status,
+    create_order,
+    set_payment_status,
+)
+from .services.payment import PaymentError, request_payment, verify_payment
 from .sizes import SIZE_TABLE
 
 LOGIN_ERROR = 'نام کاربری یا رمز عبور اشتباه است'
@@ -365,3 +376,269 @@ class CouponCheckView(APIView):
 
         discount = min(subtotal, (subtotal * coupon.percent) // 100)
         return Response({"valid": True, "percent": coupon.percent, "discount": discount})
+
+
+# =============================================================================
+# Admin Order & Customer & Dashboard views
+# =============================================================================
+
+class AdminOrderListView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        qs = Order.objects.all().prefetch_related("items", "logs").select_related("customer")
+        status_param = request.query_params.get("status")
+        if status_param and status_param != "all":
+            qs = qs.filter(status=status_param)
+        payment_status_param = request.query_params.get("payment_status")
+        if payment_status_param and payment_status_param != "all":
+            qs = qs.filter(payment_status=payment_status_param)
+        q = request.query_params.get("q", "").strip()
+        if q:
+            clean_q = "".join(c for c in q if c.isdigit())
+            q_filter = (
+                Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(phone__icontains=q)
+            )
+            if clean_q:
+                try:
+                    num_val = int(clean_q)
+                    q_filter |= Q(number=num_val) | Q(pk=num_val)
+                except ValueError:
+                    pass
+            qs = qs.filter(q_filter)
+        return Response(AdminOrderSerializer(qs, many=True).data)
+
+
+class AdminOrderDetailView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def get(self, request, number):
+        order = get_object_or_404(
+            Order.objects.prefetch_related("items", "logs"),
+            number=number,
+        )
+        return Response(AdminOrderSerializer(order).data)
+
+    def patch(self, request, number):
+        order = get_object_or_404(Order, number=number)
+        actor = request.user.username or "admin"
+
+        new_status = request.data.get("status")
+        if new_status and new_status != order.status:
+            try:
+                order = change_order_status(order, new_status, actor=actor)
+            except OrderError as exc:
+                return Response(
+                    {"detail": str(exc), "code": exc.code},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        new_payment = request.data.get("payment_status")
+        if new_payment and new_payment != order.payment_status:
+            try:
+                order = set_payment_status(order, new_payment, actor=actor)
+            except OrderError as exc:
+                return Response(
+                    {"detail": str(exc), "code": exc.code},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        if "note" in request.data:
+            order.note = request.data["note"]
+            order.save(update_fields=["note", "updated_at"])
+
+        return Response(AdminOrderSerializer(order).data)
+
+
+class AdminOrderCreateView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def post(self, request):
+        serializer = CreateOrderSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "اطلاعات سفارش نامعتبر است.", "fields": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            actor = request.user.username or "admin"
+            order = create_order(serializer.validated_data, actor=actor)
+        except OrderError as exc:
+            return Response(
+                {"detail": str(exc), "code": exc.code, "fields": exc.fields},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(AdminOrderSerializer(order).data, status=status.HTTP_201_CREATED)
+
+
+class AdminCustomerListView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        qs = Customer.objects.annotate(
+            orders_count=Count("orders"),
+            total_spent=Coalesce(
+                Sum("orders__total", filter=Q(orders__payment_status="paid")), 0
+            ),
+            last_order_date=Max("orders__created_at"),
+        ).prefetch_related("orders")
+
+        q = request.query_params.get("q", "").strip()
+        if q:
+            qs = qs.filter(
+                Q(first_name__icontains=q)
+                | Q(last_name__icontains=q)
+                | Q(phone__icontains=q)
+                | Q(city__icontains=q)
+            )
+        city = request.query_params.get("city")
+        if city and city != "all" and city != "همه شهرها":
+            qs = qs.filter(city=city)
+
+        return Response(AdminCustomerSerializer(qs, many=True).data)
+
+
+class AdminDashboardView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        now = timezone.now()
+        paid_orders = Order.objects.filter(payment_status="paid")
+        total_revenue = paid_orders.aggregate(s=Sum("total"))["s"] or 0
+        total_orders = Order.objects.count()
+        paid_count = paid_orders.count()
+        total_customers = Customer.objects.count()
+        avg_order_value = int(total_revenue // paid_count) if paid_count > 0 else 0
+
+        orders_by_status = {
+            "new": Order.objects.filter(status="new").count(),
+            "processing": Order.objects.filter(status="processing").count(),
+            "shipped": Order.objects.filter(status="shipped").count(),
+            "delivered": Order.objects.filter(status="delivered").count(),
+            "cancelled": Order.objects.filter(status="cancelled").count(),
+        }
+
+        days_sales = []
+        for i in range(6, -1, -1):
+            day_start = (now - timezone.timedelta(days=i)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            day_end = day_start + timezone.timedelta(days=1)
+            day_rev = (
+                Order.objects.filter(
+                    payment_status="paid",
+                    created_at__gte=day_start,
+                    created_at__lt=day_end,
+                ).aggregate(s=Sum("total"))["s"]
+                or 0
+            )
+            day_orders_count = Order.objects.filter(
+                created_at__gte=day_start, created_at__lt=day_end
+            ).count()
+            days_sales.append({
+                "date": day_start.strftime("%Y-%m-%d"),
+                "revenue": day_rev,
+                "orders": day_orders_count,
+            })
+
+        recent = (
+            Order.objects.all()
+            .prefetch_related("items", "logs")
+            .select_related("customer")[:8]
+        )
+        recent_serialized = AdminOrderSerializer(recent, many=True).data
+
+        low_stock_sizes = (
+            ProductSize.objects.filter(is_active=True, stock__lte=3)
+            .select_related("product")[:10]
+        )
+        low_stock_list = [
+            {
+                "id": s.id,
+                "productName": s.product.name,
+                "productSlug": s.product.slug,
+                "sizeUs": float(s.us),
+                "sizeEu": float(s.eu),
+                "stock": s.stock,
+            }
+            for s in low_stock_sizes
+        ]
+
+        return Response({
+            "totalRevenue": total_revenue,
+            "totalOrders": total_orders,
+            "totalCustomers": total_customers,
+            "avgOrderValue": avg_order_value,
+            "ordersByStatus": orders_by_status,
+            "salesByDay": days_sales,
+            "recentOrders": recent_serialized,
+            "lowStock": low_stock_list,
+        })
+
+
+# =============================================================================
+# Payment gateway views
+# =============================================================================
+
+class PaymentRequestView(APIView):
+    """
+    POST /api/orders/<number>/pay/?token=<public_token>
+    Initiates payment request with bank gateway or sandbox simulator.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request, number):
+        token = request.query_params.get("token") or request.data.get("token")
+        order = get_object_or_404(Order, number=number)
+        if str(order.public_token) != str(token):
+            return Response(
+                {"detail": "توکن امنیتی سفارش نامعتبر است."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            result = request_payment(order)
+            return Response(result, status=status.HTTP_200_OK)
+        except PaymentError as exc:
+            return Response(
+                {"detail": str(exc), "code": exc.code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+
+class PaymentVerifyView(APIView):
+    """
+    GET /api/payment/verify/?Authority=...&Status=...
+    Callback endpoint called by the bank (or simulator).
+    Verifies transaction and redirects user back to the order-success page.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        authority = request.query_params.get("Authority", "").strip()
+        status_param = request.query_params.get("Status", "").strip()
+
+        try:
+            result = verify_payment(authority, status_param)
+            order = result["order"]
+            if result.get("success"):
+                ref_id = result.get("ref_id", "")
+                redirect_url = (
+                    f"{settings.FRONTEND_URL}/order-success/{order.number}?"
+                    f"token={order.public_token}&payment=success&ref_id={ref_id}"
+                )
+            else:
+                redirect_url = (
+                    f"{settings.FRONTEND_URL}/order-success/{order.number}?"
+                    f"token={order.public_token}&payment=failed"
+                )
+            return HttpResponseRedirect(redirect_url)
+        except PaymentError as exc:
+            return Response(
+                {"detail": str(exc), "code": exc.code},
+                status=status.HTTP_400_BAD_REQUEST,
+            )

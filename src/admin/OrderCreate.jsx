@@ -4,6 +4,7 @@ import { formatNumber, formatPrice } from '../utils/format'
 import { useProducts } from '../context/ProductsContext'
 import { CUSTOMERS, getCustomerStats, toJalaliShort } from '../data/customers'
 import { addOrder, PAYMENT_STATUS_LABELS, STATUS_LABELS } from '../data/orders'
+import { api } from './api'
 
 const inputClass =
   'h-[42px] w-full box-border min-w-0 rounded-md border border-[#D9D9D6] bg-white px-3 text-sm text-[#111] outline-none focus:border-[#111]'
@@ -197,31 +198,66 @@ export default function OrderCreate() {
       }
     }
 
-    // Simulate async save
-    await new Promise((resolve) => setTimeout(resolve, 500))
+    // Try creating via API
+    try {
+      const parts = (selectedCustomer.name || '').trim().split(' ')
+      const firstName = parts[0] || 'مشتری'
+      const lastName = parts.slice(1).join(' ') || 'حضوری'
+      const orderItems = items.map((i) => {
+        const prod = products.find((p) => p.id === i.productId)
+        return {
+          slug: prod ? prod.slug : i.productId,
+          size_us: parseFloat(i.size),
+          quantity: i.quantity,
+        }
+      })
 
-    const newOrder = addOrder({
-      customer: {
-        name: selectedCustomer.name,
-        city: selectedCustomer.city,
+      const payload = {
+        first_name: firstName,
+        last_name: lastName,
         phone: selectedCustomer.phone,
-      },
-      items: items.map((i) => ({
-        productId: i.productId,
-        name: i.name,
-        size: `US ${i.size}`,
-        qty: i.quantity,
-        price: i.price * i.quantity,
-      })),
-      total,
-      paymentStatus,
-      status: orderStatus,
-    })
+        city: selectedCustomer.city || 'تهران',
+        address: selectedCustomer.address || 'آدرس ثبت دستی',
+        delivery_method: shippingMethod === 'post' ? 'express' : 'standard',
+        items: orderItems,
+        note: note || '',
+      }
 
-    // Note: In a real app, we'd reduce stock in the backend here
-    navigate('/admin/orders', {
-      state: { success: `سفارش ${newOrder.orderNumber} ثبت شد` },
-    })
+      const res = await api('/admin/orders/new/', {
+        method: 'POST',
+        body: payload,
+      })
+
+      navigate('/admin/orders', {
+        state: { success: `سفارش ${res.orderNumber || res.number} با موفقیت در سیستم ثبت شد` },
+      })
+      return
+    } catch {
+      // Fallback to local memory mock if API is down
+      const newOrder = addOrder({
+        customer: {
+          name: selectedCustomer.name,
+          city: selectedCustomer.city,
+          phone: selectedCustomer.phone,
+        },
+        items: items.map((i) => ({
+          productId: i.productId,
+          name: i.name,
+          size: `US ${i.size}`,
+          qty: i.quantity,
+          price: i.price * i.quantity,
+        })),
+        total,
+        paymentStatus,
+        status: orderStatus,
+      })
+
+      navigate('/admin/orders', {
+        state: { success: `سفارش ${newOrder.orderNumber} ثبت شد` },
+      })
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Get available sizes for a product

@@ -259,25 +259,30 @@ const handleChange = (field, value) => {
           >
             <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col" noValidate style={{ width: '100%' }}>
               {/* Name field */}
-              <div className="relative" style={{ height: '32px', borderTop: '1px solid #777' }}>
+              <div style={{ borderBottom: '1px solid #999', padding: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12, direction: 'rtl' }}>
+                <div className="w-2 h-2 bg-black flex-shrink-0" aria-hidden="true" />
                 <input
                   type="text"
                   name="name"
                   placeholder={t('contact.form.namePlaceholder')}
                   value={formData.name}
                   onChange={(e) => handleChange('name', e.target.value)}
-                  className="absolute inset-0 w-full h-full bg-transparent border-none outline-none pe-[16px] text-black placeholder:text-[#9a9a9a] text-end"
+                  className="w-full h-full bg-transparent border-none outline-none placeholder:text-[#9a9a9a] placeholder:text-right text-right"
                   style={{
+                    flex: 1,
                     fontSize: '16px',
                     fontWeight: 400,
                     letterSpacing: '-0.03em',
                     lineHeight: '1.05',
+                    paddingRight: 0,
+                    direction: 'rtl',
+                    textAlign: 'right',
                   }}
                   disabled={isSubmitting}
                   aria-invalid={!!errors.name}
                   aria-describedby={errors.name ? 'name-error' : undefined}
+                  dir="rtl"
                 />
-                <div className="absolute start-0 top-1/2 -translate-y-1/2 w-[8px] h-[8px] bg-black" aria-hidden="true" />
                 {errors.name && (
                   <p id="name-error" className="absolute -bottom-5 start-0 text-red-600 text-xs" style={{ fontSize: '11px' }}>
                     {errors.name}
@@ -285,27 +290,31 @@ const handleChange = (field, value) => {
                 )}
               </div>
 
-              {/* Phone field - dir="ltr" with text-start */}
-              <div className="relative" style={{ height: '32px', borderTop: '1px solid #777', borderBottom: '1px solid #777' }}>
+              {/* Phone field - dir="rtl" with text-right */}
+              <div style={{ borderBottom: '1px solid #999', padding: '12px 0', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: 12, direction: 'rtl' }}>
+                <div className="w-2 h-2 bg-black flex-shrink-0" aria-hidden="true" />
                 <input
                   type="tel"
                   name="phone"
                   placeholder={t('contact.form.phonePlaceholder')}
                   value={formData.phone}
                   onChange={(e) => handleChange('phone', e.target.value)}
-                  className="absolute inset-0 w-full h-full bg-transparent border-none outline-none pe-[16px] text-black placeholder:text-[#9a9a9a] text-start"
+                  className="w-full h-full bg-transparent border-none outline-none placeholder:text-[#9a9a9a] placeholder:text-right text-right"
                   style={{
+                    flex: 1,
                     fontSize: '16px',
                     fontWeight: 400,
                     letterSpacing: '-0.03em',
                     lineHeight: '1.05',
+                    paddingRight: 0,
+                    direction: 'rtl',
+                    textAlign: 'right',
                   }}
                   disabled={isSubmitting}
                   aria-invalid={!!errors.phone}
                   aria-describedby={errors.phone ? 'phone-error' : undefined}
-                  dir="ltr"
+                  dir="rtl"
                 />
-                <div className="absolute start-0 top-1/2 -translate-y-1/2 w-[8px] h-[8px] bg-black" aria-hidden="true" />
                 {errors.phone && (
                   <p id="phone-error" className="absolute -bottom-5 start-0 text-red-600 text-xs" style={{ fontSize: '11px' }}>
                     {errors.phone}
@@ -314,7 +323,7 @@ const handleChange = (field, value) => {
               </div>
 
               {/* Checkbox + Privacy Policy */}
-              <label className="flex items-start gap-[8px] flex-row-reverse" style={{ marginTop: '14px', cursor: 'pointer' }}>
+              <label className="flex flex-row-reverse items-center justify-start gap-2" style={{ marginTop: '14px', cursor: 'pointer', direction: 'rtl' }}>
                 <span style={{ fontSize: '10px', fontWeight: 400, letterSpacing: '-0.03em', lineHeight: '1.3', color: '#000' }}>
                   {t('contact.form.agree')}
                   {' '}

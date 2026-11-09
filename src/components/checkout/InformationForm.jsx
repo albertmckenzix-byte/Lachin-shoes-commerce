@@ -1,7 +1,264 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
+import { ChevronDown, Lock, Search, Check } from 'lucide-react'
 
-export default function InformationForm({ formData, setFormData, errors, setErrors, setSubmitted }) {
+export const IRAN_PROVINCES = [
+  'آذربایجان شرقی',
+  'آذربایجان غربی',
+  'اردبیل',
+  'اصفهان',
+  'البرز',
+  'ایلام',
+  'بوشهر',
+  'تهران',
+  'چهارمحال و بختیاری',
+  'خراسان جنوبی',
+  'خراسان رضوی',
+  'خراسان شمالی',
+  'خوزستان',
+  'زنجان',
+  'سمنان',
+  'سیستان و بلوچستان',
+  'فارس',
+  'قزوین',
+  'قم',
+  'کردستان',
+  'کرمان',
+  'کرمانشاه',
+  'کهگیلویه و بویراحمد',
+  'گلستان',
+  'گیلان',
+  'لرستان',
+  'مازندران',
+  'مرکزی',
+  'هرمزگان',
+  'همدان',
+  'یزد',
+]
+
+function FormInput({
+  id,
+  label,
+  type = 'text',
+  value,
+  onChange,
+  onBlur,
+  placeholder,
+  inputMode,
+  dir = 'rtl',
+  error,
+  errorId,
+  ...props
+}) {
+  return (
+    <div className="relative">
+      <label htmlFor={id} className="sr-only">
+        {label}
+      </label>
+      <input
+        id={id}
+        type={type}
+        value={value}
+        onChange={onChange}
+        onBlur={(e) => onBlur && onBlur(e.target.value)}
+        placeholder={placeholder}
+        inputMode={inputMode}
+        dir={dir}
+        style={{ textAlign: 'right' }}
+        aria-invalid={error ? 'true' : 'false'}
+        aria-describedby={error ? errorId : undefined}
+        className="w-full h-10 bg-transparent border-0 border-b-[1px] border-[#BDBDBD] text-[13px] text-black placeholder-[#8a8a8a] text-right placeholder:text-right focus:border-black focus:outline-none transition-colors"
+        {...props}
+      />
+      {error && (
+        <p id={errorId} className="absolute bottom-[-18px] start-0 text-[11px] text-red-600" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function CountryLockedField() {
+  return (
+    <div className="relative">
+      <label className="sr-only">کشور / منطقه</label>
+      <div
+        className="w-full h-10 border-0 border-b-[1px] border-[#BDBDBD] text-[13px] flex items-center justify-between select-none cursor-not-allowed bg-transparent"
+        dir="rtl"
+        title="ارسال سفارش فقط در محدوده کشور ایران امکان‌پذیر است"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-black font-medium">ایران</span>
+          <span className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
+            کشور مبدأ و مقصد
+          </span>
+        </div>
+        <div className="flex items-center gap-1 text-[11px] text-gray-400">
+          <Lock className="w-3.5 h-3.5 text-gray-400" />
+          <span>پیش‌فرض (قفل‌شده)</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ProvinceSelectDropdown({ value, onChange, onBlur, error, errorId }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const containerRef = useRef(null)
+  const searchInputRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setIsOpen(false)
+        if (onBlur) onBlur(value)
+      }
+    }
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      document.addEventListener('touchstart', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+    }
+  }, [isOpen, onBlur, value])
+
+  useEffect(() => {
+    if (isOpen && searchInputRef.current) {
+      searchInputRef.current.focus()
+    }
+    if (!isOpen) {
+      setSearchQuery('')
+    }
+  }, [isOpen])
+
+  const filteredProvinces = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) return IRAN_PROVINCES
+    return IRAN_PROVINCES.filter((prov) => prov.toLowerCase().includes(q))
+  }, [searchQuery])
+
+  const handleSelect = (province) => {
+    onChange(province)
+    setIsOpen(false)
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="sr-only">استان</label>
+
+      {/* Dropdown Trigger */}
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') setIsOpen(false)
+        }}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+        aria-invalid={error ? 'true' : 'false'}
+        aria-describedby={error ? errorId : undefined}
+        className={`w-full h-10 bg-transparent border-0 border-b-[1px] text-[13px] text-right flex items-center justify-between transition-colors focus:outline-none ${
+          error
+            ? 'border-red-500'
+            : isOpen
+            ? 'border-black'
+            : 'border-[#BDBDBD] hover:border-black'
+        }`}
+        dir="rtl"
+      >
+        <span className={value ? 'text-black font-medium' : 'text-[#8a8a8a]'}>
+          {value || 'انتخاب استان'}
+        </span>
+        <ChevronDown
+          className={`w-4 h-4 text-gray-500 transition-transform duration-200 flex-shrink-0 ms-2 ${
+            isOpen ? 'rotate-180 text-black' : ''
+          }`}
+        />
+      </button>
+
+      {/* Dropdown Floating Popover */}
+      {isOpen && (
+        <div
+          role="listbox"
+          aria-label="فهرست استان‌های ایران"
+          className="absolute top-full start-0 end-0 z-50 mt-1 bg-white border border-[#E5E5E5] rounded-md shadow-2xl overflow-hidden flex flex-col text-right animate-in fade-in duration-100"
+          dir="rtl"
+        >
+          {/* Quick Search */}
+          <div className="p-2 border-b border-gray-100 bg-neutral-50 flex items-center gap-2">
+            <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="جستجوی سریع استان..."
+              className="w-full bg-transparent text-[12px] text-black placeholder:text-gray-400 focus:outline-none text-right"
+              onClick={(e) => e.stopPropagation()}
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="text-[11px] text-gray-400 hover:text-black px-1"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          {/* List of 31 Provinces */}
+          <div className="max-h-56 overflow-y-auto divide-y divide-gray-50">
+            {filteredProvinces.length > 0 ? (
+              filteredProvinces.map((prov) => {
+                const isSelected = value === prov
+                return (
+                  <button
+                    key={prov}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => handleSelect(prov)}
+                    className={`w-full px-3.5 py-2.5 text-[13px] text-right flex items-center justify-between transition-colors ${
+                      isSelected
+                        ? 'bg-neutral-100 font-semibold text-black'
+                        : 'hover:bg-neutral-50 text-neutral-800'
+                    }`}
+                  >
+                    <span>{prov}</span>
+                    {isSelected && <Check className="w-4 h-4 text-black flex-shrink-0" />}
+                  </button>
+                )
+              })
+            ) : (
+              <div className="py-4 text-center text-[12px] text-gray-400">
+                استانی با این نام یافت نشد
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <p id={errorId} className="absolute bottom-[-18px] start-0 text-[11px] text-red-600" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
+export default function InformationForm({
+  formData,
+  setFormData,
+  errors,
+  setErrors,
+  setSubmitted,
+}) {
   const { t } = useTranslation()
   const [touched, setTouched] = useState({})
 
@@ -28,6 +285,12 @@ export default function InformationForm({ formData, setFormData, errors, setErro
           return false
         }
         break
+      case 'province':
+        if (!value || !value.trim()) {
+          setErrors((prev) => ({ ...prev, [field]: 'لطفاً استان خود را انتخاب کنید' }))
+          return false
+        }
+        break
       case 'phone':
         if (!value.trim()) {
           setErrors((prev) => ({ ...prev, [field]: t('checkout.requiredField') }))
@@ -48,7 +311,6 @@ export default function InformationForm({ formData, setFormData, errors, setErro
           return false
         }
         break
-      case 'country':
       case 'zipCode':
         if (!value.trim()) {
           setErrors((prev) => ({ ...prev, [field]: t('checkout.requiredField') }))
@@ -67,7 +329,17 @@ export default function InformationForm({ formData, setFormData, errors, setErro
 
   const validateAll = () => {
     let valid = true
-    const fields = ['firstName', 'lastName', 'phone', 'email', 'country', 'city', 'address', 'zipCode', 'agreeDataProcessing']
+    const fields = [
+      'firstName',
+      'lastName',
+      'phone',
+      'email',
+      'province',
+      'city',
+      'address',
+      'zipCode',
+      'agreeDataProcessing',
+    ]
     fields.forEach((field) => {
       setTouched((prev) => ({ ...prev, [field]: true }))
       if (!validateField(field, formData[field])) {
@@ -84,60 +356,23 @@ export default function InformationForm({ formData, setFormData, errors, setErro
     }
   }
 
-  const Input = ({ id, label, type = 'text', value, onChange, onBlur, placeholder, inputMode, dir = 'rtl', error, errorId, ...props }) => (
-    <div className="relative">
-      <label htmlFor={id} className="sr-only">{label}</label>
-      <input
-        id={id}
-        type={type}
-        value={value}
-        onChange={onChange}
-        onBlur={(e) => onBlur(e.target.value)}
-        placeholder={placeholder}
-        inputMode={inputMode}
-        dir={dir}
-        style={{ textAlign: dir === 'ltr' ? 'start' : 'start' }}
-        aria-invalid={error ? 'true' : 'false'}
-        aria-describedby={error ? errorId : undefined}
-        className="w-full h-10 bg-transparent border-0 border-b-[1px] border-[#BDBDBD] text-[13px] text-black placeholder-[#8a8a8a] focus:border-black focus:outline-none"
-        {...props}
-      />
-      {error && <p id={errorId} className="absolute bottom-[-18px] start-0 text-[11px] text-red-600" role="alert">{error}</p>}
-    </div>
-  )
-
-  const Select = ({ id, label, value, onChange, onBlur, error, errorId, children, ...props }) => (
-    <div className="relative">
-      <label htmlFor={id} className="sr-only">{label}</label>
-      <select
-        id={id}
-        value={value}
-        onChange={onChange}
-        onBlur={(e) => onBlur(e.target.value)}
-        aria-invalid={error ? 'true' : 'false'}
-        aria-describedby={error ? errorId : undefined}
-        className="w-full h-10 bg-transparent border-0 border-b-[1px] border-[#BDBDBD] text-[13px] text-black focus:border-black focus:outline-none appearance-none"
-        dir="rtl"
-        {...props}
-      >
-        {children}
-      </select>
-      {error && <p id={errorId} className="absolute bottom-[-18px] start-0 text-[11px] text-red-600" role="alert">{error}</p>}
-    </div>
-  )
-
   return (
     <form onSubmit={handleSubmit} noValidate>
       <div className="flex items-center justify-between mb-5">
         <h2 className="text-[24px] font-normal text-black leading-[1.3]">{t('checkout.information')}</h2>
-        <Trans i18nKey="checkout.loginPrompt" components={{ 1: <a href="#" className="underline text-black hover:text-black" /> }}>
+        <Trans
+          i18nKey="checkout.loginPrompt"
+          components={{ 1: <a href="#" className="underline text-black hover:text-black" /> }}
+        >
           {t('checkout.loginPrompt')}
         </Trans>
       </div>
 
-      <h3 className="text-[14px] font-semibold text-black leading-[1.3] mt-7 mb-2">{t('checkout.personalInfo')}</h3>
+      <h3 className="text-[14px] font-semibold text-black leading-[1.3] mt-7 mb-2">
+        {t('checkout.personalInfo')}
+      </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-7 gap-y-2">
-        <Input
+        <FormInput
           id="firstName"
           label={t('checkout.firstName')}
           value={formData.firstName}
@@ -147,7 +382,7 @@ export default function InformationForm({ formData, setFormData, errors, setErro
           error={touched.firstName ? errors.firstName : ''}
           errorId="firstName-error"
         />
-        <Input
+        <FormInput
           id="lastName"
           label={t('checkout.lastName')}
           value={formData.lastName}
@@ -157,7 +392,7 @@ export default function InformationForm({ formData, setFormData, errors, setErro
           error={touched.lastName ? errors.lastName : ''}
           errorId="lastName-error"
         />
-        <Input
+        <FormInput
           id="phone"
           label={t('checkout.phoneNumber')}
           type="tel"
@@ -166,11 +401,10 @@ export default function InformationForm({ formData, setFormData, errors, setErro
           onBlur={handleBlur}
           placeholder={t('checkout.phoneNumber')}
           inputMode="tel"
-          dir="ltr"
           error={touched.phone ? errors.phone : ''}
           errorId="phone-error"
         />
-        <Input
+        <FormInput
           id="email"
           label={t('checkout.email')}
           type="email"
@@ -179,30 +413,31 @@ export default function InformationForm({ formData, setFormData, errors, setErro
           onBlur={handleBlur}
           placeholder={t('checkout.email')}
           inputMode="email"
-          dir="ltr"
           error={touched.email ? errors.email : ''}
           errorId="email-error"
         />
       </div>
 
-      <h3 className="text-[14px] font-semibold text-black leading-[1.3] mt-7 mb-2">{t('checkout.shippingInfo')}</h3>
+      <h3 className="text-[14px] font-semibold text-black leading-[1.3] mt-7 mb-2">
+        {t('checkout.shippingInfo')}
+      </h3>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-7 gap-y-2">
-        <Select
-          id="country"
-          label={t('checkout.countryRegion')}
-          value={formData.country}
-          onChange={(e) => handleChange('country', e.target.value)}
-          onBlur={handleBlur}
-          error={touched.country ? errors.country : ''}
-          errorId="country-error"
-        >
-          <option value="" disabled>{t('checkout.countryRegion')}</option>
-          <option value="IR">Iran</option>
-          <option value="US">United States</option>
-          <option value="AE">United Arab Emirates</option>
-          <option value="TR">Turkey</option>
-        </Select>
-        <Input
+        {/* Country locked on Iran */}
+        <CountryLockedField />
+
+        {/* Province custom dropdown */}
+        <ProvinceSelectDropdown
+          value={formData.province}
+          onChange={(val) => {
+            handleChange('province', val)
+          }}
+          onBlur={(val) => handleBlur('province', val)}
+          error={touched.province ? errors.province : ''}
+          errorId="province-error"
+        />
+
+        {/* City input */}
+        <FormInput
           id="city"
           label={t('checkout.city')}
           value={formData.city}
@@ -212,8 +447,22 @@ export default function InformationForm({ formData, setFormData, errors, setErro
           error={touched.city ? errors.city : ''}
           errorId="city-error"
         />
+
+        {/* Postal Code input */}
+        <FormInput
+          id="zipCode"
+          label={t('checkout.zipPostalCode')}
+          value={formData.zipCode}
+          onChange={(e) => handleChange('zipCode', e.target.value)}
+          onBlur={handleBlur}
+          placeholder={t('checkout.zipPostalCode')}
+          error={touched.zipCode ? errors.zipCode : ''}
+          errorId="zipCode-error"
+        />
+
+        {/* Full Street Address taking full row */}
         <div className="sm:col-span-2">
-          <Input
+          <FormInput
             id="address"
             label={t('checkout.address')}
             value={formData.address}
@@ -224,17 +473,6 @@ export default function InformationForm({ formData, setFormData, errors, setErro
             errorId="address-error"
           />
         </div>
-        <Input
-          id="zipCode"
-          label={t('checkout.zipPostalCode')}
-          value={formData.zipCode}
-          onChange={(e) => handleChange('zipCode', e.target.value)}
-          onBlur={handleBlur}
-          placeholder={t('checkout.zipPostalCode')}
-          dir="ltr"
-          error={touched.zipCode ? errors.zipCode : ''}
-          errorId="zipCode-error"
-        />
       </div>
 
       <div className="flex items-center gap-2 mt-6 relative">
@@ -245,15 +483,26 @@ export default function InformationForm({ formData, setFormData, errors, setErro
           checked={formData.agreeDataProcessing}
           onChange={(e) => handleChange('agreeDataProcessing', e.target.checked)}
           onBlur={(e) => handleBlur('agreeDataProcessing', e.target.checked)}
-          className="w-[14px] h-[14px] border-[#BDBDBD] text-black focus:ring-0 focus:border-black rounded-[2px] flex-shrink-0"
+          className="w-[14px] h-[14px] border-[#BDBDBD] text-black focus:ring-0 focus:border-black rounded-[2px] flex-shrink-0 cursor-pointer"
           aria-invalid={touched.agreeDataProcessing && errors.agreeDataProcessing ? 'true' : 'false'}
-          aria-describedby={touched.agreeDataProcessing && errors.agreeDataProcessing ? 'agreeDataProcessing-error' : undefined}
+          aria-describedby={
+            touched.agreeDataProcessing && errors.agreeDataProcessing
+              ? 'agreeDataProcessing-error'
+              : undefined
+          }
         />
-        <Trans i18nKey="checkout.consent" components={{ 1: <a href="#" className="underline text-black hover:text-black" /> }}>
-          {t('checkout.consent')}
-        </Trans>
+        <label htmlFor="agreeDataProcessing" className="cursor-pointer select-none text-[12px] text-gray-700">
+          <Trans
+            i18nKey="checkout.consent"
+            components={{ 1: <a href="#" className="underline text-black hover:text-black font-medium" /> }}
+          >
+            {t('checkout.consent')}
+          </Trans>
+        </label>
         {touched.agreeDataProcessing && errors.agreeDataProcessing && (
-          <p id="agreeDataProcessing-error" className="absolute bottom-[-18px] start-0 text-[11px] text-red-600" role="alert">{errors.agreeDataProcessing}</p>
+          <p id="agreeDataProcessing-error" className="absolute bottom-[-18px] start-0 text-[11px] text-red-600" role="alert">
+            {errors.agreeDataProcessing}
+          </p>
         )}
       </div>
     </form>

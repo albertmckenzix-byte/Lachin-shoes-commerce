@@ -221,51 +221,82 @@ export default function Dashboard() {
   const [products, setProducts] = useState([])
   const [productsLoading, setProductsLoading] = useState(true)
 
+  // Dashboard stats loaded from real API
+  const [dashData, setDashData] = useState(null)
+  const [dashLoading, setDashLoading] = useState(true)
+
   // Date range selector
   const [range, setRange] = useState('7')
 
-  const loadProducts = useCallback(async () => {
+  const loadData = useCallback(async () => {
     setProductsLoading(true)
+    setDashLoading(true)
     try {
-      const data = await api('/admin/products/')
-      setProducts(Array.isArray(data) ? data : [])
+      const [prodsRes, dashRes] = await Promise.allSettled([
+        api('/admin/products/'),
+        api('/admin/dashboard/'),
+      ])
+      if (prodsRes.status === 'fulfilled' && Array.isArray(prodsRes.value)) {
+        setProducts(prodsRes.value)
+      }
+      if (dashRes.status === 'fulfilled' && dashRes.value) {
+        setDashData(dashRes.value)
+      }
     } catch {
-      setProducts([])
+      // Fallback to static
     } finally {
       setProductsLoading(false)
+      setDashLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    loadProducts()
-  }, [loadProducts])
+    loadData()
+  }, [loadData])
 
   // ── Derived data ────────────────────────────────────────────────────────────
 
   // Today's orders (always fixed to today regardless of range)
   const todayOrders = useMemo(() => {
     const todayStr = localDateStr(getNow())
-    return ORDERS.filter((o) => localDateStr(new Date(o.createdAt)) === todayStr)
-  }, [])
+    const source = (dashData && Array.isArray(dashData.recentOrders) && dashData.recentOrders.length > 0)
+      ? dashData.recentOrders
+      : ORDERS
+    return source.filter((o) => localDateStr(new Date(o.createdAt)) === todayStr)
+  }, [dashData])
 
   // KPI: today's sales
-  const todaySales = useMemo(
-    () => todayOrders.reduce((s, o) => s + o.total, 0),
-    [todayOrders]
-  )
+  const todaySales = useMemo(() => {
+    if (dashData && Array.isArray(dashData.salesByDay) && dashData.salesByDay.length > 0) {
+      const todayStr = localDateStr(getNow())
+      const found = dashData.salesByDay.find((d) => d.date === todayStr)
+      if (found) return found.revenue
+    }
+    return todayOrders.reduce((s, o) => s + (o.total || 0), 0)
+  }, [dashData, todayOrders])
 
   // KPI: last-7-days orders (always 7, independent of range select)
-  const last7Orders = useMemo(() => filterByRange(ORDERS, '7'), [])
-  const last7Sales = useMemo(
-    () => last7Orders.reduce((s, o) => s + o.total, 0),
-    [last7Orders]
-  )
+  const last7Orders = useMemo(() => {
+    if (dashData && Array.isArray(dashData.recentOrders)) {
+      return filterByRange(dashData.recentOrders, '7')
+    }
+    return filterByRange(ORDERS, '7')
+  }, [dashData])
+
+  const last7Sales = useMemo(() => {
+    if (dashData && Array.isArray(dashData.salesByDay)) {
+      return dashData.salesByDay.reduce((s, d) => s + (d.revenue || 0), 0)
+    }
+    return last7Orders.reduce((s, o) => s + (o.total || 0), 0)
+  }, [dashData, last7Orders])
 
   // KPI: pending (new + processing) – from all orders
-  const pendingCount = useMemo(
-    () => ORDERS.filter((o) => o.status === 'new' || o.status === 'processing').length,
-    []
-  )
+  const pendingCount = useMemo(() => {
+    if (dashData && dashData.ordersByStatus) {
+      return (dashData.ordersByStatus.new || 0) + (dashData.ordersByStatus.processing || 0)
+    }
+    return ORDERS.filter((o) => o.status === 'new' || o.status === 'processing').length
+  }, [dashData])
 
   // KPI: low-stock products from API
   const lowStockProducts = useMemo(
@@ -281,6 +312,16 @@ export default function Dashboard() {
   const daySales = useMemo(() => {
     const days = lastNDays(7)
     const todayStr = localDateStr(getNow())
+    if (dashData && Array.isArray(dashData.salesByDay) && dashData.salesByDay.length > 0) {
+      return days.map((dateStr) => {
+        const found = dashData.salesByDay.find((d) => d.date === dateStr)
+        return {
+          dateStr,
+          label: weekdayLabel(dateStr, dateStr === todayStr),
+          sales: found ? found.revenue : 0,
+        }
+      })
+    }
     return days.map((dateStr) => {
       const sales = ORDERS.filter(
         (o) => localDateStr(new Date(o.createdAt)) === dateStr
@@ -291,25 +332,36 @@ export default function Dashboard() {
         sales,
       }
     })
-  }, [])
+  }, [dashData])
 
   // Status breakdown (all orders)
   const statusCounts = useMemo(() => {
+    if (dashData && dashData.ordersByStatus) {
+      return dashData.ordersByStatus
+    }
     const counts = {}
     for (const o of ORDERS) {
       counts[o.status] = (counts[o.status] || 0) + 1
     }
     return counts
-  }, [])
+  }, [dashData])
+
+  const totalOrdersCount = useMemo(() => {
+    if (dashData && typeof dashData.totalOrders === 'number') {
+      return dashData.totalOrders
+    }
+    return ORDERS.length
+  }, [dashData])
 
   // 5 most recent orders
-  const recentOrders = useMemo(
-    () =>
-      [...ORDERS]
-        .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-        .slice(0, 5),
-    []
-  )
+  const recentOrders = useMemo(() => {
+    if (dashData && Array.isArray(dashData.recentOrders) && dashData.recentOrders.length > 0) {
+      return dashData.recentOrders.slice(0, 5)
+    }
+    return [...ORDERS]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 5)
+  }, [dashData])
 
   const todayLabel = todayJalali()
 
@@ -409,11 +461,11 @@ export default function Dashboard() {
             وضعیت سفارش‌ها
           </div>
 
-          {ORDERS.length === 0 ? (
+          {totalOrdersCount === 0 ? (
             <p className="text-sm text-[#6B6B6B]">هنوز سفارشی ثبت نشده است</p>
           ) : (
             <>
-              <StatusBar statusCounts={statusCounts} total={ORDERS.length} />
+              <StatusBar statusCounts={statusCounts} total={totalOrdersCount} />
 
               <ul className="mt-4 flex flex-col gap-2.5">
                 {Object.entries(STATUS_COLORS).map(([key, color]) => {
@@ -441,7 +493,7 @@ export default function Dashboard() {
               <div className="mt-auto border-t border-[#ECECEA] pt-3 flex items-center justify-between">
                 <span className="text-sm text-[#6B6B6B]">مجموع سفارش‌ها</span>
                 <span className="text-sm font-bold text-[#111]">
-                  {formatNumber(ORDERS.length)}
+                  {formatNumber(totalOrdersCount)}
                 </span>
               </div>
             </>

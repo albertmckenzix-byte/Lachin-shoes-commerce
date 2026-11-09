@@ -48,6 +48,21 @@
   html[lang="fa"] .pill-solid {
     line-height: 1 !important;
   }
+
+  /* Consistent RTL alignment for all form inputs and placeholders */
+  input,
+  textarea,
+  select {
+    direction: rtl;
+    text-align: right;
+  }
+
+  input::placeholder,
+  textarea::placeholder,
+  select::placeholder {
+    text-align: right;
+    direction: rtl;
+  }
 }
 
 @layer components {

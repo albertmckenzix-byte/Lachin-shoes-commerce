@@ -5,7 +5,16 @@ from django.db import transaction
 from django.utils.text import slugify
 from rest_framework import serializers
 
-from .models import Order, OrderItem, Product, ProductImage, ProductSize
+from .models import (
+    Coupon,
+    Customer,
+    Order,
+    OrderItem,
+    OrderStatusLog,
+    Product,
+    ProductImage,
+    ProductSize,
+)
 from .sizes import SIZE_TABLE_SET
 
 
@@ -292,6 +301,7 @@ class CreateOrderSerializer(serializers.Serializer):
     phone           = serializers.CharField(max_length=20)
     email           = serializers.EmailField(required=False, allow_blank=True, default="")
     country         = serializers.CharField(max_length=100, required=False, default="Iran")
+    province        = serializers.CharField(max_length=100, required=False, allow_blank=True, default="")
     city            = serializers.CharField(max_length=100)
     address         = serializers.CharField()
     postal_code     = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
@@ -329,15 +339,132 @@ class OrderItemPublicSerializer(serializers.ModelSerializer):
 
 class OrderDetailPublicSerializer(serializers.ModelSerializer):
     """Safe public view — no address / phone."""
-    paymentStatus = serializers.CharField(source="payment_status")
-    createdAt     = serializers.DateTimeField(source="created_at")
-    items         = OrderItemPublicSerializer(many=True, read_only=True)
+    paymentStatus  = serializers.CharField(source="payment_status")
+    deliveryMethod = serializers.CharField(source="delivery_method")
+    shippingFee    = serializers.IntegerField(source="shipping_fee")
+    discountTotal  = serializers.IntegerField(source="discount_total")
+    transactionId  = serializers.CharField(source="transaction_id")
+    shippingTrackingCode = serializers.CharField(source="shipping_tracking_code")
+    createdAt      = serializers.DateTimeField(source="created_at")
+    items          = OrderItemPublicSerializer(many=True, read_only=True)
 
     class Meta:
         model  = Order
-        fields = ["number", "status", "paymentStatus", "total", "createdAt", "items"]
+        fields = [
+            "number", "status", "paymentStatus", "deliveryMethod",
+            "subtotal", "shippingFee", "discountTotal", "total",
+            "transactionId", "shippingTrackingCode",
+            "createdAt", "items"
+        ]
 
 
 class CouponCheckSerializer(serializers.Serializer):
     code     = serializers.CharField(max_length=50)
     subtotal = serializers.IntegerField(min_value=0)
+
+
+class AdminOrderStatusLogSerializer(serializers.ModelSerializer):
+    createdAt = serializers.DateTimeField(source="created_at")
+
+    class Meta:
+        model = OrderStatusLog
+        fields = ["id", "actor", "field", "old_value", "new_value", "createdAt"]
+
+
+class AdminOrderItemSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source="product_name")
+    productId = serializers.CharField(source="product_slug")
+    price = serializers.IntegerField(source="unit_price")
+    qty = serializers.IntegerField(source="quantity")
+    lineTotal = serializers.IntegerField(source="line_total")
+    size = serializers.SerializerMethodField()
+
+    class Meta:
+        model = OrderItem
+        fields = [
+            "id", "name", "productId", "size_us", "size_eu", "size",
+            "price", "qty", "lineTotal"
+        ]
+
+    def get_size(self, obj):
+        return f"US {obj.size_us}"
+
+
+class AdminOrderSerializer(serializers.ModelSerializer):
+    orderNumber = serializers.SerializerMethodField()
+    customer = serializers.SerializerMethodField()
+    items = AdminOrderItemSerializer(many=True, read_only=True)
+    logs = AdminOrderStatusLogSerializer(many=True, read_only=True)
+    paymentStatus = serializers.CharField(source="payment_status")
+    deliveryMethod = serializers.CharField(source="delivery_method")
+    shippingFee = serializers.IntegerField(source="shipping_fee")
+    discountTotal = serializers.IntegerField(source="discount_total")
+    createdAt = serializers.DateTimeField(source="created_at")
+    updatedAt = serializers.DateTimeField(source="updated_at")
+
+    class Meta:
+        model = Order
+        fields = [
+            "id", "number", "orderNumber", "customer", "items", "logs",
+            "delivery_method", "deliveryMethod", "subtotal",
+            "shipping_fee", "shippingFee", "discount_total", "discountTotal",
+            "total", "coupon_code", "status", "payment_status", "paymentStatus",
+            "payment_method", "note", "stock_released", "createdAt", "updatedAt"
+        ]
+
+    def get_orderNumber(self, obj):
+        return f"#{obj.number or obj.pk}"
+
+    def get_customer(self, obj):
+        return {
+            "id": obj.customer_id,
+            "name": f"{obj.first_name} {obj.last_name}".strip(),
+            "first_name": obj.first_name,
+            "last_name": obj.last_name,
+            "phone": obj.phone,
+            "email": obj.email,
+            "country": obj.country,
+            "city": obj.city,
+            "address": obj.address,
+            "postal_code": obj.postal_code,
+        }
+
+
+class AdminCustomerSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    ordersCount = serializers.SerializerMethodField()
+    totalSpent = serializers.SerializerMethodField()
+    lastOrderDate = serializers.SerializerMethodField()
+    createdAt = serializers.DateTimeField(source="created_at")
+    address = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Customer
+        fields = [
+            "id", "name", "first_name", "last_name", "phone", "email",
+            "city", "address", "ordersCount", "totalSpent", "lastOrderDate",
+            "createdAt"
+        ]
+
+    def get_name(self, obj):
+        return f"{obj.first_name} {obj.last_name}".strip()
+
+    def get_ordersCount(self, obj):
+        return getattr(obj, "orders_count", obj.orders.count())
+
+    def get_totalSpent(self, obj):
+        if hasattr(obj, "total_spent"):
+            return obj.total_spent or 0
+        from django.db.models import Sum
+        total = obj.orders.filter(payment_status="paid").aggregate(s=Sum("total"))["s"]
+        return total or 0
+
+    def get_lastOrderDate(self, obj):
+        if hasattr(obj, "last_order_date"):
+            return obj.last_order_date
+        last = obj.orders.order_by("-created_at").first()
+        return last.created_at if last else None
+
+    def get_address(self, obj):
+        last = obj.orders.order_by("-created_at").first()
+        return last.address if last else obj.city

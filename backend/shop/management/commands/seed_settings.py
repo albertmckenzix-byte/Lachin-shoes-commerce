@@ -24,12 +24,13 @@ class Command(BaseCommand):
             )
         )
 
-        # --- RYST10 coupon ---
-        coupon, created = Coupon.objects.get_or_create(
-            code="RYST10",
-            defaults={"percent": 10, "is_active": True},
-        )
-        if created:
-            self.stdout.write(self.style.SUCCESS("Coupon RYST10 created (10% off, active)."))
-        else:
-            self.stdout.write(self.style.WARNING("Coupon RYST10 already exists — skipped."))
+        # --- Coupons ---
+        for code in ["RYST10", "LACHIN10"]:
+            coupon, created = Coupon.objects.get_or_create(
+                code=code,
+                defaults={"percent": 10, "is_active": True},
+            )
+            if created:
+                self.stdout.write(self.style.SUCCESS(f"Coupon {code} created (10% off, active)."))
+            else:
+                self.stdout.write(self.style.WARNING(f"Coupon {code} already exists — skipped."))

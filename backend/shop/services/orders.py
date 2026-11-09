@@ -144,7 +144,10 @@ def create_order(data: dict[str, Any], actor: str = "customer") -> Order:
     last_name  = str(data.get("last_name",  "")).strip()
     email      = str(data.get("email",      "")).strip()
     country    = str(data.get("country",    "Iran")).strip() or "Iran"
+    province   = str(data.get("province",   "")).strip()
     city       = str(data.get("city",       "")).strip()
+    if province and province not in city:
+        city = f"{province}، {city}" if city else province
     address    = str(data.get("address",    "")).strip()
     note       = str(data.get("note",       "")).strip()
     raw_phone  = str(data.get("phone",      "")).strip()
@@ -186,7 +189,7 @@ def create_order(data: dict[str, Any], actor: str = "customer") -> Order:
         raise OrderError("اطلاعات وارد شده معتبر نیست.", code="validation", fields=errors)
 
     # ---- validate & lock items ---------------------------------------------
-    seen_slugs: set[str] = set()
+    seen_items: set[tuple[str, str]] = set()
     item_rows: list[dict] = []          # will hold enriched item data
 
     for idx, raw_item in enumerate(raw_items):
@@ -196,11 +199,6 @@ def create_order(data: dict[str, Any], actor: str = "customer") -> Order:
 
         if not slug:
             raise OrderError(f"اسلاگ محصول در ردیف {idx+1} الزامی است.", code="validation")
-        if slug in seen_slugs:
-            raise OrderError(
-                f"محصول «{slug}» بیش از یک بار در سفارش آمده است.", code="validation"
-            )
-        seen_slugs.add(slug)
 
         try:
             quantity = int(quantity)
@@ -217,6 +215,13 @@ def create_order(data: dict[str, Any], actor: str = "customer") -> Order:
             raise OrderError(
                 f"سایز محصول «{slug}» معتبر نیست.", code="validation"
             )
+
+        item_key = (slug, str(size_us))
+        if item_key in seen_items:
+            raise OrderError(
+                f"محصول «{slug}» با سایز US {size_us} بیش از یک بار در سفارش آمده است.", code="validation"
+            )
+        seen_items.add(item_key)
 
         # Load active product
         try:

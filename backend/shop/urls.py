@@ -1,9 +1,14 @@
 from django.urls import path
 
 from .views import (
+    AdminCustomerListView,
+    AdminDashboardView,
     AdminLoginView,
     AdminLogoutView,
     AdminMeView,
+    AdminOrderCreateView,
+    AdminOrderDetailView,
+    AdminOrderListView,
     AdminProductDetailView,
     AdminProductImageDeleteView,
     AdminProductImageReorderView,
@@ -13,6 +18,8 @@ from .views import (
     CouponCheckView,
     OrderCreateView,
     OrderDetailPublicView,
+    PaymentRequestView,
+    PaymentVerifyView,
     ProductDetailView,
     ProductListView,
 )
@@ -29,8 +36,16 @@ urlpatterns = [
     path('admin/products/<int:pk>/images/reorder/', AdminProductImageReorderView.as_view(), name='admin-product-images-reorder'),
     path('admin/products/<int:pk>/images/<int:image_id>/', AdminProductImageDeleteView.as_view(), name='admin-product-image-delete'),
     path('admin/sizes/', AdminSizeTableView.as_view(), name='admin-size-table'),
+    # Admin Orders, Customers, Dashboard
+    path('admin/orders/', AdminOrderListView.as_view(), name='admin-orders-list'),
+    path('admin/orders/new/', AdminOrderCreateView.as_view(), name='admin-order-create'),
+    path('admin/orders/<int:number>/', AdminOrderDetailView.as_view(), name='admin-order-detail'),
+    path('admin/customers/', AdminCustomerListView.as_view(), name='admin-customers-list'),
+    path('admin/dashboard/', AdminDashboardView.as_view(), name='admin-dashboard'),
     # Order endpoints
     path('orders/', OrderCreateView.as_view(), name='order-create'),
     path('orders/<int:number>/', OrderDetailPublicView.as_view(), name='order-detail'),
+    path('orders/<int:number>/pay/', PaymentRequestView.as_view(), name='payment-request'),
+    path('payment/verify/', PaymentVerifyView.as_view(), name='payment-verify'),
     path('coupons/check/', CouponCheckView.as_view(), name='coupon-check'),
 ]

@@ -16,6 +16,8 @@ import Home from './pages/Home'
 import AllProducts from './pages/AllProducts'
 import About from './pages/About'
 import Checkout from './pages/Checkout'
+import OrderSuccess from './pages/OrderSuccess'
+import PaymentSimulator from './pages/PaymentSimulator'
 import ProductDetail from './pages/ProductDetail'
 import ScrollToTop from './components/ScrollToTop'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -39,6 +41,8 @@ function App() {
                 <Route path="/all-products" element={<AllProducts />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/checkout" element={<Checkout />} />
+                <Route path="/order-success/:number" element={<OrderSuccess />} />
+                <Route path="/payment/simulator" element={<PaymentSimulator />} />
                 <Route path="/product/:slug" element={<ProductDetail />} />
                 <Route path="/foot-size-finder" element={<FootSizeFinderTest />} />
               </Route>

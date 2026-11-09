@@ -153,6 +153,9 @@ class Order(models.Model):
         default=PaymentStatus.PENDING
     )
     payment_method = models.CharField(max_length=50, default="online")
+    payment_authority = models.CharField(max_length=100, blank=True, default="", db_index=True)
+    transaction_id = models.CharField(max_length=100, blank=True, default="")
+    shipping_tracking_code = models.CharField(max_length=100, blank=True, default="")
     note = models.TextField(blank=True)
 
     # Guards & identifiers

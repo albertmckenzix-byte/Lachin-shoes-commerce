@@ -472,3 +472,80 @@ class OrderAPITests(APITestCase):
         self.size.save()
         resp = self._post_order()
         self.assertEqual(resp.status_code, 400)
+
+    def test_admin_orders_and_dashboard(self):
+        from django.contrib.auth.models import User
+        staff_user = User.objects.create_user(
+            username="teststaff", password="password", is_staff=True
+        )
+        self.client.force_authenticate(user=staff_user)
+
+        # Place an order
+        order = create_order(base_data())
+
+        # Test Admin orders list
+        resp = self.client.get("/api/admin/orders/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertGreaterEqual(len(resp.json()), 1)
+
+        # Test Admin order patch status
+        resp_patch = self.client.patch(
+            f"/api/admin/orders/{order.number}/",
+            {"status": "processing"},
+            format="json",
+        )
+        self.assertEqual(resp_patch.status_code, 200)
+        self.assertEqual(resp_patch.json()["status"], "processing")
+
+        # Test Admin customers list
+        resp_cust = self.client.get("/api/admin/customers/")
+        self.assertEqual(resp_cust.status_code, 200)
+        self.assertGreaterEqual(len(resp_cust.json()), 1)
+
+        # Test Admin dashboard
+        resp_dash = self.client.get("/api/admin/dashboard/")
+        self.assertEqual(resp_dash.status_code, 200)
+        dash_data = resp_dash.json()
+        self.assertIn("totalOrders", dash_data)
+        self.assertIn("totalRevenue", dash_data)
+        self.assertIn("ordersByStatus", dash_data)
+
+    def test_payment_request_and_verify_flow(self):
+        order = create_order(base_data())
+
+        # Request payment
+        resp_pay = self.client.post(f"/api/orders/{order.number}/pay/?token={order.public_token}")
+        self.assertEqual(resp_pay.status_code, 200)
+        pay_data = resp_pay.json()
+        self.assertIn("payment_url", pay_data)
+        self.assertIn("authority", pay_data)
+        authority = pay_data["authority"]
+
+        # Wrong token should fail
+        resp_wrong = self.client.post(f"/api/orders/{order.number}/pay/?token=invalid-token")
+        self.assertEqual(resp_wrong.status_code, 403)
+
+        # Verify payment (OK)
+        resp_verify = self.client.get(f"/api/payment/verify/?Authority={authority}&Status=OK")
+        self.assertEqual(resp_verify.status_code, 302)
+        self.assertIn("payment=success", resp_verify.url)
+
+        # Order must be updated
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, Order.PaymentStatus.PAID)
+        self.assertEqual(order.status, Order.Status.PROCESSING)
+        self.assertTrue(order.transaction_id.startswith("REF-"))
+        self.assertIsNotNone(order.paid_at)
+
+    def test_payment_cancelled_by_user(self):
+        order = create_order(base_data(slug="air-max"))
+        resp_pay = self.client.post(f"/api/orders/{order.number}/pay/?token={order.public_token}")
+        authority = resp_pay.json()["authority"]
+
+        # User cancels at bank
+        resp_verify = self.client.get(f"/api/payment/verify/?Authority={authority}&Status=NOK")
+        self.assertEqual(resp_verify.status_code, 302)
+        self.assertIn("payment=failed", resp_verify.url)
+
+        order.refresh_from_db()
+        self.assertEqual(order.payment_status, Order.PaymentStatus.PENDING)

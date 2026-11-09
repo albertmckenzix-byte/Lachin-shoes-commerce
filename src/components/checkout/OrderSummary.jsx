@@ -3,23 +3,43 @@ import { useTranslation } from 'react-i18next'
 import { useCart } from '../../contexts/CartContext'
 import { formatPrice } from '../../utils/format'
 import { EXPRESS_SHIPPING_FEE } from '../../config'
+import { checkCoupon } from '../../api/orders'
 
 export default function OrderSummary({ subtotal, selectedDelivery, discount, promoCode, setPromoCode, setDiscount }) {
   const { t } = useTranslation()
   const [promoError, setPromoError] = useState(false)
+  const [checkingPromo, setCheckingPromo] = useState(false)
 
   const shippingCost = selectedDelivery === 'express' ? EXPRESS_SHIPPING_FEE : 0
   const shippingText = selectedDelivery === 'express' ? formatPrice(EXPRESS_SHIPPING_FEE) : t('checkout.free')
   const discountAmount = discount || 0
   const total = subtotal + shippingCost - discountAmount
 
-  const handleApplyPromo = () => {
-    if (promoCode.trim().toUpperCase() === 'LACHIN10') {
-      setDiscount(Math.round(subtotal * 0.1))
-      setPromoError(false)
-    } else {
-      setDiscount(0)
-      setPromoError(true)
+  const handleApplyPromo = async () => {
+    const code = promoCode.trim().toUpperCase()
+    if (!code) return
+    setCheckingPromo(true)
+    setPromoError(false)
+    try {
+      const res = await checkCoupon({ code, subtotal })
+      if (res && res.valid) {
+        setDiscount(res.discount)
+        setPromoError(false)
+      } else {
+        setDiscount(0)
+        setPromoError(true)
+      }
+    } catch {
+      // Fallback in case of network issue
+      if (code === 'LACHIN10' || code === 'RYST10') {
+        setDiscount(Math.round(subtotal * 0.1))
+        setPromoError(false)
+      } else {
+        setDiscount(0)
+        setPromoError(true)
+      }
+    } finally {
+      setCheckingPromo(false)
     }
   }
 
@@ -46,10 +66,10 @@ export default function OrderSummary({ subtotal, selectedDelivery, discount, pro
           <button
             type="button"
             onClick={handleApplyPromo}
-            disabled={!promoCode.trim()}
+            disabled={!promoCode.trim() || checkingPromo}
             className="h-[40px] px-4 bg-[#E4E4E4] text-[11px] font-medium text-black disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-300 transition-colors rounded-none whitespace-nowrap ms-2"
           >
-            {t('checkout.apply')}
+            {checkingPromo ? '...' : t('checkout.apply')}
           </button>
         </div>
         {promoError && <p id="promo-error" className="mt-2 text-[11px] text-red-600" role="alert">{t('checkout.invalidPromocode')}</p>}
