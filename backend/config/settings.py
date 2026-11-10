@@ -158,5 +158,17 @@ REST_FRAMEWORK = {
         'login': '10/minute',
         'order_create': '10/minute',
         'coupon_check': '20/minute',
+        'payment_start': '10/minute',
     },
 }
+
+
+# Online payment ---------------------------------------------------------
+# PAYMENT_GATEWAY: "zarinpal" (default) or "mock" (local testing, DEBUG only)
+PAYMENT_GATEWAY = os.environ.get('PAYMENT_GATEWAY', 'zarinpal')
+ZARINPAL_MERCHANT_ID = os.environ.get('ZARINPAL_MERCHANT_ID', '')
+ZARINPAL_SANDBOX = os.environ.get('ZARINPAL_SANDBOX', 'False') == 'True'
+# Public address of the storefront (customer returns here) and of this API
+# (the gateway calls back here).
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
+BACKEND_URL = os.environ.get('BACKEND_URL', 'http://localhost:8000')

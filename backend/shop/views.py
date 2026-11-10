@@ -5,6 +5,8 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.conf import settings
+from django.http import Http404, HttpResponse, HttpResponseRedirect
+from django.utils.html import escape
 from PIL import Image
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment
@@ -41,6 +43,7 @@ from .serializers import (
     OrderPublicSerializer,
     PublicProductSerializer,
 )
+from .services.payments import PaymentError, handle_callback, start_payment
 from .services.orders import OrderError, change_order_status, create_order, set_payment_status
 from .sizes import SIZE_TABLE
 
@@ -381,6 +384,93 @@ class CouponCheckView(APIView):
 
         discount = min(subtotal, (subtotal * coupon.percent) // 100)
         return Response({"valid": True, "percent": coupon.percent, "discount": discount})
+
+
+# =============================================================================
+# Online payment views
+# =============================================================================
+
+class PaymentStartThrottle(AnonRateThrottle):
+    """10 payment starts per minute per IP."""
+    rate = "10/minute"
+    scope = "payment_start"
+
+
+class OrderStartPaymentView(APIView):
+    """
+    POST /api/orders/<number>/pay/   body: { "token": "<public_token>" }
+    Creates a gateway session and returns { "redirectUrl": "..." }.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+    throttle_classes = [PaymentStartThrottle]
+
+    def post(self, request, number):
+        order = get_object_or_404(Order, number=number)
+        token = request.data.get("token", "")
+        if str(order.public_token) != str(token):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        try:
+            redirect_url = start_payment(order)
+        except PaymentError as exc:
+            http_status = {
+                "not_payable": status.HTTP_409_CONFLICT,
+                "not_configured": status.HTTP_503_SERVICE_UNAVAILABLE,
+            }.get(exc.code, status.HTTP_502_BAD_GATEWAY)
+            return Response({"detail": str(exc), "code": exc.code}, status=http_status)
+        return Response({"redirectUrl": redirect_url})
+
+
+class PaymentCallbackView(APIView):
+    """
+    GET /api/payments/callback/?Authority=...&Status=OK|NOK
+    The gateway sends the customer here. We verify the payment and redirect the
+    browser to the storefront order page with ?payment=<outcome>.
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        order, outcome = handle_callback(
+            request.query_params.get("Authority", ""),
+            request.query_params.get("Status", ""),
+        )
+        frontend = settings.FRONTEND_URL.rstrip("/")
+        if order is None:
+            return HttpResponseRedirect(f"{frontend}/")
+        return HttpResponseRedirect(
+            f"{frontend}/order/{order.number}?token={order.public_token}&payment={outcome}"
+        )
+
+
+class MockGatewayPageView(APIView):
+    """
+    GET /api/payments/mock/<authority>/
+    Fake gateway page for local testing (DEBUG + PAYMENT_GATEWAY=mock only).
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request, authority):
+        if not (settings.DEBUG and getattr(settings, "PAYMENT_GATEWAY", "") == "mock"):
+            raise Http404
+        order = get_object_or_404(Order, payment_authority=authority)
+        base = f"{settings.BACKEND_URL.rstrip('/')}/api/payments/callback/?Authority={escape(authority)}"
+        html = (
+            '<!doctype html><html lang="fa" dir="rtl"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width, initial-scale=1">'
+            '<title>درگاه پرداخت آزمایشی</title></head>'
+            '<body style="font-family:Tahoma,sans-serif;max-width:420px;margin:60px auto;padding:0 16px">'
+            '<h1 style="font-size:20px">درگاه پرداخت آزمایشی</h1>'
+            f'<p>سفارش شماره {order.number} · مبلغ {order.total:,} تومان</p>'
+            '<p style="color:#a52a22">فقط برای تست در حالت توسعه.</p>'
+            f'<p><a href="{base}&amp;Status=OK" style="display:inline-block;padding:12px 20px;'
+            'background:#111;color:#fff;text-decoration:none">پرداخت موفق</a></p>'
+            f'<p><a href="{base}&amp;Status=NOK" style="display:inline-block;padding:12px 20px;'
+            'border:1px solid #111;color:#111;text-decoration:none">انصراف از پرداخت</a></p>'
+            '</body></html>'
+        )
+        return HttpResponse(html)
 
 
 # =============================================================================

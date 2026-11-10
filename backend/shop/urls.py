@@ -23,8 +23,11 @@ from .views import (
     AdminProductListCreateView,
     AdminSizeTableView,
     CouponCheckView,
+    MockGatewayPageView,
     OrderCreateView,
     OrderDetailPublicView,
+    OrderStartPaymentView,
+    PaymentCallbackView,
     ProductDetailView,
     ProductListView,
     SettingsView,
@@ -61,4 +64,8 @@ urlpatterns = [
     path('orders/', OrderCreateView.as_view(), name='order-create'),
     path('orders/<int:number>/', OrderDetailPublicView.as_view(), name='order-detail'),
     path('coupons/check/', CouponCheckView.as_view(), name='coupon-check'),
+    # Online payment
+    path('orders/<int:number>/pay/', OrderStartPaymentView.as_view(), name='order-pay'),
+    path('payments/callback/', PaymentCallbackView.as_view(), name='payment-callback'),
+    path('payments/mock/<slug:authority>/', MockGatewayPageView.as_view(), name='payment-mock'),
 ]

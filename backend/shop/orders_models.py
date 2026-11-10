@@ -153,6 +153,10 @@ class Order(models.Model):
         default=PaymentStatus.PENDING
     )
     payment_method = models.CharField(max_length=50, default="online")
+    # Online payment gateway data (filled by shop.services.payments)
+    payment_authority = models.CharField(max_length=64, blank=True, db_index=True)
+    payment_ref_id = models.CharField(max_length=32, blank=True)
+    payment_card_pan = models.CharField(max_length=32, blank=True)
     note = models.TextField(blank=True)
 
     # Guards & identifiers

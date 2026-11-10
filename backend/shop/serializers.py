@@ -397,6 +397,7 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
     paymentStatus = serializers.CharField(source="payment_status")
     createdAt = serializers.DateTimeField(source="created_at")
     paidAt = serializers.DateTimeField(source="paid_at", allow_null=True)
+    paymentRefId = serializers.CharField(source="payment_ref_id", read_only=True)
     items = AdminOrderItemSerializer(many=True, read_only=True)
     logs = serializers.SerializerMethodField()
 
@@ -406,7 +407,7 @@ class AdminOrderDetailSerializer(serializers.ModelSerializer):
                   "address", "postal_code", "delivery_method", "subtotal",
                   "shipping_fee", "discount_total", "total", "coupon_code",
                   "note", "status", "paymentStatus", "createdAt", "paidAt",
-                  "items", "logs"]
+                  "paymentRefId", "items", "logs"]
 
     def get_customerName(self, obj):
         return f"{obj.first_name} {obj.last_name}"
