@@ -1,5 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { MapPin, ExternalLink } from 'lucide-react'
+
+// Default shop location coordinates / query - easily customizable
+const SHOP_LOCATION = {
+  query: 'Tehran, Valiasr St',
+  directUrl: 'https://www.google.com/maps/search/?api=1&query=Tehran+Valiasr+St',
+  zoom: 15,
+}
 
 let footerBgImg = null
 try {
@@ -25,7 +33,7 @@ const smudgeStyle = (left, top, size, opacity = 0.06) => ({
   zIndex: 1,
 })
 
-export default function ContactFooter() {
+export default function ContactFooter({ mapConfig = SHOP_LOCATION }) {
   const { t } = useTranslation()
   const [formData, setFormData] = useState({
     name: '',
@@ -110,8 +118,6 @@ const handleChange = (field, value) => {
   const infoText = t('contact.info.text')
   const titleText = t('contact.title')
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 900
-
   return (
     <footer
       className="relative z-10 w-full min-h-[680px] overflow-hidden"
@@ -174,29 +180,104 @@ const handleChange = (field, value) => {
 
         {/* Grid Layout - uses logical flow with dir="rtl" */}
         <div
-          className="grid"
+          className="grid contact-grid"
           style={{
-            gridTemplateColumns: 'minmax(0,45fr) minmax(0,18fr) minmax(0,20fr) minmax(0,17fr)',
+            gridTemplateColumns: 'minmax(0,48fr) minmax(0,15fr) minmax(0,20fr) minmax(0,17fr)',
             gridTemplateAreas: `
               "info . address phone"
               "info . hours   email"
-              ".    . .       ."
-              "para . form    form"
+              "info . .       ."
+              "info . form    form"
             `,
-            gridTemplateRows: 'auto auto minmax(80px, 1fr) auto',
+            gridTemplateRows: 'auto auto minmax(30px, 1fr) auto',
             columnGap: 0,
             paddingTop: '22px',
-            minHeight: '520px',
+            minHeight: '560px',
             alignItems: 'start',
           }}
         >
-          {/* INFO label - row 1-2, col 1 (rightmost) */}
-          <div style={{ gridArea: 'info' }}>
-            <span style={labelStyle}>{t('contact.info.label')}</span>
+          {/* INFO & MAP column - row 1-4, col 1 (rightmost in RTL) */}
+          <div
+            style={{
+              gridArea: 'info',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+              height: '100%',
+              maxWidth: '640px',
+            }}
+          >
+            {/* Top: Google Map */}
+            <div className="contact-map-block w-full">
+              <div className="flex items-center justify-between mb-[10px] gap-2">
+                <span style={labelStyle} className="flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4 text-black inline-block flex-shrink-0" />
+                  {t('contact.map.label')}
+                </span>
+                <a
+                  href={mapConfig.directUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapConfig.query)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[12px] font-medium text-black/70 hover:text-black underline flex items-center gap-1 transition-colors"
+                  title={t('contact.map.openInMaps')}
+                >
+                  <span>{t('contact.map.openInMaps')}</span>
+                  <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                </a>
+              </div>
+
+              <div
+                className="relative w-full border border-black bg-[#dcdcd9] overflow-hidden group shadow-sm"
+                style={{
+                  height: '380px',
+                }}
+              >
+                <iframe
+                  title={t('contact.map.label')}
+                  src={`https://maps.google.com/maps?q=${encodeURIComponent(mapConfig.query)}&t=&z=${mapConfig.zoom || 15}&ie=UTF8&iwloc=&output=embed`}
+                  width="100%"
+                  height="100%"
+                  style={{
+                    border: 0,
+                    width: '100%',
+                    height: '100%',
+                    display: 'block',
+                    filter: 'grayscale(25%) contrast(1.02)',
+                    transition: 'filter 0.3s ease',
+                  }}
+                  className="group-hover:filter-none"
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                />
+              </div>
+
+              <p
+                className="text-[12px] text-[#666] mt-1.5 flex items-center justify-between"
+                style={{ letterSpacing: '-0.02em' }}
+              >
+                <span>{t('contact.map.addressHint')}</span>
+                <span className="text-[11px] text-[#888]">Google Maps</span>
+              </p>
+            </div>
+
+            {/* Bottom: Paragraph text */}
+            <div style={{ marginTop: '24px', maxWidth: '490px' }}>
+              <p
+                style={{
+                  fontSize: '18px',
+                  fontWeight: 500,
+                  letterSpacing: '-0.03em',
+                  lineHeight: '1.25',
+                  color: '#000',
+                }}
+              >
+                {infoText}
+              </p>
+            </div>
           </div>
 
           {/* ADDRESS block - row 1, col 3 */}
-          <div style={{ gridArea: 'address', minWidth: '220px' }}>
+          <div style={{ gridArea: 'address', minWidth: '220px', marginTop: '34px' }}>
             <span style={labelStyle}>{t('contact.address.label')}</span>
             {addressLines.map((line, i) => (
               <div key={i} style={{ ...valueStyle, marginTop: '4px' }}>
@@ -206,7 +287,7 @@ const handleChange = (field, value) => {
           </div>
 
           {/* PHONE block - row 1, col 4 (far left) */}
-          <div style={{ gridArea: 'phone', minWidth: '200px' }}>
+          <div style={{ gridArea: 'phone', minWidth: '200px', marginTop: '34px' }}>
             <span style={labelStyle}>{t('contact.phone.label')}</span>
             <div style={{ ...valueStyle, marginTop: '4px' }}>
               {phoneValue}
@@ -228,23 +309,6 @@ const handleChange = (field, value) => {
             <span style={labelStyle}>{t('contact.email.label')}</span>
             <div style={{ ...emailValueStyle, marginTop: '4px' }}>
               {emailValue}
-            </div>
-          </div>
-
-          {/* Paragraph - row 4, col 1 (rightmost), aligned to bottom */}
-          <div style={{ gridArea: 'para', alignSelf: 'end' }}>
-            <div style={{ maxWidth: '490px' }}>
-              <p
-                style={{
-                  fontSize: '18px',
-                  fontWeight: 500,
-                  letterSpacing: '-0.03em',
-                  lineHeight: '1.05',
-                  color: '#000',
-                }}
-              >
-                {infoText}
-              </p>
             </div>
           </div>
 
@@ -410,8 +474,8 @@ const handleChange = (field, value) => {
           .grid > div:nth-child(6) {
             margin-top: 28px !important;
           }
-          .grid > div:nth-child(7) {
-            margin-top: 28px !important;
+          .contact-map-block > div:nth-child(2) {
+            height: 240px !important;
           }
         }
       `}</style>

@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronUp } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { menuData } from '../data/menu'
 import { useMenu } from '../contexts/MenuContext'
 import { Link, useLocation } from 'react-router-dom'
@@ -22,14 +22,13 @@ const TOP_LEVEL_ROUTES = {
 
 export default function MenuDrawer() {
   const { t, i18n } = useTranslation()
-  const { isMenuOpen, closeMenu, shopExpanded, setShopExpanded } = useMenu()
+  const { isMenuOpen, closeMenu, setShopExpanded } = useMenu()
   const drawerRef = useRef(null)
   const closeButtonRef = useRef(null)
   const previousActiveElement = useRef(null)
   const location = useLocation()
   const currentPath = location.pathname + location.search
-  const [genderExpanded, setGenderExpanded] = useState(false)
-  const [brandExpanded, setBrandExpanded] = useState(false)
+  const [expandedSections, setExpandedSections] = useState({})
   const [isRtl, setIsRtl] = useState(false)
 
   const isActive = (path) => {
@@ -41,9 +40,17 @@ export default function MenuDrawer() {
     closeMenu()
   }
 
-  const handleShopToggle = (e) => {
+  const toggleSection = (key, e) => {
     e.stopPropagation()
-    setShopExpanded((v) => !v)
+    setExpandedSections((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }))
+  }
+
+  const isSectionExpanded = (item) => {
+    const key = item.expandedKey || item.labelKey
+    return Boolean(expandedSections[key])
   }
 
   useEffect(() => {
@@ -101,6 +108,7 @@ export default function MenuDrawer() {
 
   useEffect(() => {
     if (!isMenuOpen) {
+      setExpandedSections({})
       setShopExpanded(false)
     }
   }, [isMenuOpen, setShopExpanded])
@@ -171,78 +179,88 @@ export default function MenuDrawer() {
         </button>
 
         <nav className="flex flex-col">
-          {menuData.map((item, index) => (
-            <div
-              key={item.labelKey}
-              className="relative w-full"
-              style={{
-                borderBottom: '1px solid #BDBDBD',
-                ...(index === 0 && { borderTop: '1px solid #BDBDBD' }),
-              }}
-            >
-              {item.children ? (
-                <button
-                  type="button"
-                  className="top-level-item w-full text-start py-[10px] px-0"
-                  style={{
-                    fontSize: '34px',
-                    fontWeight: 600,
-                    lineHeight: 1.1,
-                    letterSpacing: '-0.01em',
-                    color: isActive('/') ? '#7A7A7A' : '#000',
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    transition: 'opacity 150ms ease',
-                  }}
-                  onClick={handleShopToggle}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.6')}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-                  aria-expanded={shopExpanded}
-                >
-                  <span className="flex items-center justify-between w-full">
-                    {t(item.labelKey)}
-                    <ChevronUp
-                      size={18}
-                      strokeWidth={1.5}
-                      className="flex-shrink-0 ms-[20px] transition-transform duration-250 ease"
-                      style={{
-                        transform: shopExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                      }}
-                    />
-                  </span>
-                </button>
-              ) : (
-                <Link
-                  to={TOP_LEVEL_ROUTES[item.labelKey] || '/'}
-                  onClick={handleLinkClick}
-                  className="top-level-item w-full text-start py-[10px] px-0 block"
-                  style={{
-                    fontSize: '34px',
-                    fontWeight: 600,
-                    lineHeight: 1.1,
-                    letterSpacing: '-0.01em',
-                    color: isActive(TOP_LEVEL_ROUTES[item.labelKey] || '/') ? '#7A7A7A' : '#000',
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textDecoration: 'none',
-                    transition: 'opacity 150ms ease',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.6')}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
-                >
-                  <span className="flex items-center justify-between w-full">
-                    {t(item.labelKey)}
-                  </span>
-                </Link>
-              )}
+          {menuData.map((item, index) => {
+            const isCollapsible = Boolean(item.children)
+            const isExpanded = isCollapsible ? isSectionExpanded(item) : false
+            const sectionKey = item.expandedKey || item.labelKey
+            const hasActiveChild = isCollapsible && item.children.some((child) => {
+              const isBrand = typeof child !== 'string'
+              const childPath = isBrand ? child.path : SUBMENU_ROUTES[child]
+              return childPath ? isActive(childPath) : false
+            })
 
-              {item.children && (
-                <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${shopExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                  <div className="overflow-hidden">
-                    <div className="ps-0">
-                  {item.children.map((child) => {
+            return (
+              <div
+                key={item.labelKey}
+                className="relative w-full"
+                style={{
+                  borderBottom: '1px solid #BDBDBD',
+                  ...(index === 0 && { borderTop: '1px solid #BDBDBD' }),
+                }}
+              >
+                {isCollapsible ? (
+                  <button
+                    type="button"
+                    className="top-level-item w-full text-start py-[10px] px-0"
+                    style={{
+                      fontSize: '34px',
+                      fontWeight: 600,
+                      lineHeight: 1.1,
+                      letterSpacing: '-0.01em',
+                      color: hasActiveChild ? '#7A7A7A' : '#000',
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      transition: 'opacity 150ms ease',
+                    }}
+                    onClick={(e) => toggleSection(sectionKey, e)}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.6')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                    aria-expanded={isExpanded}
+                  >
+                    <span className="flex items-center justify-between w-full">
+                      {t(item.labelKey)}
+                      <ChevronDown
+                        size={18}
+                        strokeWidth={1.5}
+                        className="flex-shrink-0 ms-[20px] transition-transform duration-250 ease"
+                        style={{
+                          transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                        }}
+                      />
+                    </span>
+                  </button>
+                ) : (
+                  <Link
+                    to={TOP_LEVEL_ROUTES[item.labelKey] || '/'}
+                    onClick={handleLinkClick}
+                    className="top-level-item w-full text-start py-[10px] px-0 block"
+                    style={{
+                      fontSize: '34px',
+                      fontWeight: 600,
+                      lineHeight: 1.1,
+                      letterSpacing: '-0.01em',
+                      color: isActive(TOP_LEVEL_ROUTES[item.labelKey] || '/') ? '#7A7A7A' : '#000',
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textDecoration: 'none',
+                      transition: 'opacity 150ms ease',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.6')}
+                    onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                  >
+                    <span className="flex items-center justify-between w-full">
+                      {t(item.labelKey)}
+                    </span>
+                  </Link>
+                )}
+
+                {isCollapsible && (
+                  <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+                    <div className="overflow-hidden">
+                      <div className="ps-0">
+                        {item.children.map((child) => {
                           const isBrand = typeof child !== 'string'
                           const childPath = isBrand ? child.path : SUBMENU_ROUTES[child]
                           const labelKey = isBrand ? child.labelKey : child
@@ -269,19 +287,20 @@ export default function MenuDrawer() {
                             </Link>
                           )
                         })}
+                      </div>
+                      <div
+                        className="w-full"
+                        style={{
+                          borderTop: '1px solid #BDBDBD',
+                          marginTop: '12px',
+                        }}
+                      />
                     </div>
-                    <div
-                      className="w-full"
-                      style={{
-                        borderTop: '1px solid #BDBDBD',
-                        marginTop: '12px',
-                      }}
-                    />
                   </div>
-                </div>
-              )}
-            </div>
-          ))}
+                )}
+              </div>
+            )
+          })}
         </nav>
       </aside>
     </>

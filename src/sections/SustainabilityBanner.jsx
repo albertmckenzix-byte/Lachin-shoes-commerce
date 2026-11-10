@@ -15,9 +15,9 @@ export default function SustainabilityBanner() {
         className="absolute inset-0 h-full w-full object-cover object-center z-0 md:fixed md:h-screen md:w-full"
       />
 
-      <div className="absolute end-5 top-[55px] z-10">
+      <div className="absolute start-5 md:start-[64px] top-[55px] z-10">
         <h1
-          className="font-bold tracking-[-0.03em] leading-[1.25] text-white"
+          className="font-bold tracking-[-0.03em] leading-[1.25] text-white text-start"
           style={{ fontSize: 'clamp(36px, 4vw, 64px)' }}
         >
           {t('sustainability.subhead')}

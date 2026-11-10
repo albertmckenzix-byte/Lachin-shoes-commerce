@@ -4,7 +4,7 @@ const MenuContext = createContext(null)
 
 export function MenuProvider({ children }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
-  const [shopExpanded, setShopExpanded] = useState(true)
+  const [shopExpanded, setShopExpanded] = useState(false)
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const previousMenuElement = useRef(null)
   const previousSearchElement = useRef(null)
@@ -12,7 +12,7 @@ export function MenuProvider({ children }) {
   const openMenu = useCallback(() => {
     previousMenuElement.current = document.activeElement
     setIsMenuOpen(true)
-    setShopExpanded(true)
+    setShopExpanded(false)
     document.body.style.overflow = 'hidden'
   }, [])
 

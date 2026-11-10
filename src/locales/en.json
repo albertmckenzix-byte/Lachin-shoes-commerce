@@ -303,6 +303,11 @@
       "label": "ADDRESS",
       "lines": ["123 Example Street,", "City, Country"]
     },
+    "map": {
+      "label": "STORE LOCATION",
+      "openInMaps": "Open in Google Maps",
+      "addressHint": "Tehran, Valiasr St"
+    },
     "workingHours": {
       "label": "WORKING HOURS",
       "lines": ["Monday – Sunday", "9:00 AM – 6:00 PM"]
