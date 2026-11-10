@@ -7,11 +7,31 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
+# Node / Frontend build
 node_modules
 dist
 dist-ssr
 *.local
+
+# Environment secrets
 .env
+.env.*
+!.env.example
+
+# Databases
+*.sqlite3
+*.db
+.agent-bridge/
+
+# Python / Django
+backend/venv/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+backend/media/
+backend/db.sqlite3
 
 # Editor directories and files
 .vscode/*
