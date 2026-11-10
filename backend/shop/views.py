@@ -14,9 +14,11 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from rest_framework.views import APIView
 
-from .models import Coupon, Customer, Order, Product, ProductImage, ProductSize
+from .models import Coupon, Customer, Order, Product, ProductImage, ProductSize, StoreSettings
 from .permissions import IsStaffUser
 from .serializers import (
+    AdminCouponCreateUpdateSerializer,
+    AdminCouponSerializer,
     AdminCustomerSerializer,
     AdminLoginSerializer,
     AdminMeSerializer,
@@ -24,6 +26,7 @@ from .serializers import (
     AdminProductImageSerializer,
     AdminProductListSerializer,
     AdminProductSerializer,
+    AdminStoreSettingsSerializer,
     CouponCheckSerializer,
     CreateOrderSerializer,
     OrderDetailPublicSerializer,
@@ -642,3 +645,144 @@ class PaymentVerifyView(APIView):
                 {"detail": str(exc), "code": exc.code},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+
+# =============================================================================
+# Store Settings Views
+# =============================================================================
+
+class AdminSettingsView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        settings_obj = StoreSettings.get()
+        serializer = AdminStoreSettingsSerializer(settings_obj)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        settings_obj = StoreSettings.get()
+        serializer = AdminStoreSettingsSerializer(
+            settings_obj, data=request.data, partial=True
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class PublicSettingsView(APIView):
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        settings_obj = StoreSettings.get()
+        serializer = AdminStoreSettingsSerializer(settings_obj)
+        return Response(serializer.data)
+
+
+# =============================================================================
+# Coupon Admin Views
+# =============================================================================
+
+class AdminCouponListCreateView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        status_param = request.query_params.get("status", "all").strip().lower()
+        search_param = request.query_params.get("search", "").strip()
+        try:
+            page = max(1, int(request.query_params.get("page", 1)))
+        except (ValueError, TypeError):
+            page = 1
+
+        qs = Coupon.objects.all().order_by("-id")
+        if search_param:
+            if search_param.isdigit():
+                qs = qs.filter(
+                    Q(code__icontains=search_param) | Q(percent=int(search_param))
+                )
+            else:
+                qs = qs.filter(code__icontains=search_param)
+
+        now = timezone.now()
+        all_coupons = list(qs)
+
+        def compute_status(c):
+            if not c.is_active:
+                return "inactive"
+            if c.expires_at and c.expires_at < now:
+                return "expired"
+            if c.usage_limit is not None and c.used_count >= c.usage_limit:
+                return "exhausted"
+            return "active"
+
+        # Counts and summary
+        total = len(all_coupons)
+        active_count = sum(1 for c in all_coupons if compute_status(c) == "active")
+        inactive_count = sum(1 for c in all_coupons if compute_status(c) == "inactive")
+        expired_or_full_count = sum(
+            1 for c in all_coupons if compute_status(c) in ("expired", "exhausted")
+        )
+        total_uses = sum(c.used_count for c in all_coupons)
+
+        counts = {
+            "all": total,
+            "active": active_count,
+            "inactive": inactive_count,
+            "expired": expired_or_full_count,
+        }
+        summary = {
+            "total": total,
+            "active": active_count,
+            "totalUses": total_uses,
+            "expiredOrFull": expired_or_full_count,
+        }
+
+        # Filter by status
+        if status_param == "active":
+            filtered = [c for c in all_coupons if compute_status(c) == "active"]
+        elif status_param == "inactive":
+            filtered = [c for c in all_coupons if compute_status(c) == "inactive"]
+        elif status_param == "expired":
+            filtered = [
+                c for c in all_coupons if compute_status(c) in ("expired", "exhausted")
+            ]
+        else:
+            filtered = all_coupons
+
+        page_size = 10
+        total_items = len(filtered)
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_items = filtered[start:end]
+
+        return Response({
+            "results": AdminCouponSerializer(page_items, many=True).data,
+            "counts": counts,
+            "summary": summary,
+            "page": page,
+            "pageSize": page_size,
+            "total": total_items,
+            "totalPages": max(1, (total_items + page_size - 1) // page_size),
+        })
+
+    def post(self, request):
+        serializer = AdminCouponCreateUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        coupon = serializer.save()
+        return Response(AdminCouponSerializer(coupon).data, status=status.HTTP_201_CREATED)
+
+
+class AdminCouponDetailView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def patch(self, request, pk):
+        coupon = get_object_or_404(Coupon, pk=pk)
+        serializer = AdminCouponCreateUpdateSerializer(
+            coupon, data=request.data, partial=True
+        )
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        coupon = serializer.save()
+        return Response(AdminCouponSerializer(coupon).data)

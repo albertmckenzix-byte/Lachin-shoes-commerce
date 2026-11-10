@@ -1,6 +1,8 @@
 from django.urls import path
 
 from .views import (
+    AdminCouponDetailView,
+    AdminCouponListCreateView,
     AdminCustomerListView,
     AdminDashboardView,
     AdminLoginView,
@@ -14,6 +16,7 @@ from .views import (
     AdminProductImageReorderView,
     AdminProductImageUploadView,
     AdminProductListCreateView,
+    AdminSettingsView,
     AdminSizeTableView,
     CouponCheckView,
     OrderCreateView,
@@ -22,6 +25,7 @@ from .views import (
     PaymentVerifyView,
     ProductDetailView,
     ProductListView,
+    PublicSettingsView,
 )
 
 urlpatterns = [
@@ -48,4 +52,8 @@ urlpatterns = [
     path('orders/<int:number>/pay/', PaymentRequestView.as_view(), name='payment-request'),
     path('payment/verify/', PaymentVerifyView.as_view(), name='payment-verify'),
     path('coupons/check/', CouponCheckView.as_view(), name='coupon-check'),
+    path('settings/', PublicSettingsView.as_view(), name='public-settings'),
+    path('admin/settings/', AdminSettingsView.as_view(), name='admin-settings'),
+    path('admin/coupons/', AdminCouponListCreateView.as_view(), name='admin-coupons-list'),
+    path('admin/coupons/<int:pk>/', AdminCouponDetailView.as_view(), name='admin-coupon-detail'),
 ]

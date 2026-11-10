@@ -1,7 +1,9 @@
 from decimal import Decimal
+import re
 
 from django.contrib.auth.models import User
 from django.db import transaction
+from django.utils import timezone
 from django.utils.text import slugify
 from rest_framework import serializers
 
@@ -14,6 +16,7 @@ from .models import (
     Product,
     ProductImage,
     ProductSize,
+    StoreSettings,
 )
 from .sizes import SIZE_TABLE_SET
 
@@ -468,3 +471,190 @@ class AdminCustomerSerializer(serializers.ModelSerializer):
     def get_address(self, obj):
         last = obj.orders.order_by("-created_at").first()
         return last.address if last else obj.city
+
+
+class AdminStoreSettingsSerializer(serializers.ModelSerializer):
+    freeShippingThreshold = serializers.IntegerField(
+        source="free_shipping_threshold",
+        required=False,
+        min_value=0,
+        error_messages={
+            "invalid": "حداقل خرید برای ارسال رایگان باید یک عدد صحیح باشد.",
+            "min_value": "حداقل خرید برای ارسال رایگان نمی‌تواند منفی باشد.",
+        },
+    )
+    standardFee = serializers.IntegerField(
+        source="standard_fee",
+        required=False,
+        min_value=0,
+        error_messages={
+            "invalid": "هزینه ارسال عادی باید یک عدد صحیح باشد.",
+            "min_value": "هزینه ارسال عادی نمی‌تواند منفی باشد.",
+        },
+    )
+    expressFee = serializers.IntegerField(
+        source="express_fee",
+        required=False,
+        min_value=0,
+        error_messages={
+            "invalid": "هزینه ارسال اکسپرس باید یک عدد صحیح باشد.",
+            "min_value": "هزینه ارسال اکسپرس نمی‌تواند منفی باشد.",
+        },
+    )
+    pendingOrderMinutes = serializers.IntegerField(
+        source="pending_order_minutes",
+        required=False,
+        min_value=5,
+        max_value=1440,
+        error_messages={
+            "invalid": "مهلت پرداخت سفارش باید یک عدد صحیح باشد.",
+            "min_value": "مهلت پرداخت سفارش باید حداقل ۵ دقیقه باشد.",
+            "max_value": "مهلت پرداخت سفارش نمی‌تواند بیشتر از ۱۴۴۰ دقیقه (۲۴ ساعت) باشد.",
+        },
+    )
+
+    class Meta:
+        model = StoreSettings
+        fields = [
+            "freeShippingThreshold",
+            "standardFee",
+            "expressFee",
+            "pendingOrderMinutes",
+        ]
+
+    def to_internal_value(self, data):
+        mapping = {
+            "free_shipping_threshold": "freeShippingThreshold",
+            "standard_fee": "standardFee",
+            "express_fee": "expressFee",
+            "pending_order_minutes": "pendingOrderMinutes",
+        }
+        normalized = dict(data)
+        for snake, camel in mapping.items():
+            if snake in normalized and camel not in normalized:
+                normalized[camel] = normalized[snake]
+        for key in ["freeShippingThreshold", "standardFee", "expressFee", "pendingOrderMinutes"]:
+            if key in normalized:
+                v = normalized[key]
+                if isinstance(v, float) and not v.is_integer():
+                    raise serializers.ValidationError({key: "مقدار باید یک عدد صحیح باشد."})
+        return super().to_internal_value(normalized)
+
+
+class AdminCouponSerializer(serializers.ModelSerializer):
+    isActive = serializers.BooleanField(source="is_active")
+    expiresAt = serializers.DateTimeField(source="expires_at", allow_null=True)
+    usageLimit = serializers.IntegerField(source="usage_limit", allow_null=True)
+    usedCount = serializers.IntegerField(source="used_count", read_only=True)
+    status = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Coupon
+        fields = [
+            "id",
+            "code",
+            "percent",
+            "isActive",
+            "expiresAt",
+            "usageLimit",
+            "usedCount",
+            "status",
+        ]
+
+    def get_status(self, obj):
+        if not obj.is_active:
+            return "inactive"
+        now = timezone.now()
+        if obj.expires_at and obj.expires_at < now:
+            return "expired"
+        if obj.usage_limit is not None and obj.used_count >= obj.usage_limit:
+            return "exhausted"
+        return "active"
+
+
+class AdminCouponCreateUpdateSerializer(serializers.ModelSerializer):
+    code = serializers.CharField(
+        max_length=32,
+        min_length=3,
+        required=False,
+        error_messages={
+            "max_length": "طول کد تخفیف حداکثر ۳۲ کاراکتر است.",
+            "min_length": "طول کد تخفیف حداقل ۳ کاراکتر است.",
+            "blank": "کد تخفیف الزامی است.",
+        },
+    )
+    percent = serializers.IntegerField(
+        required=False,
+        min_value=1,
+        max_value=100,
+        error_messages={
+            "invalid": "درصد تخفیف باید یک عدد صحیح باشد.",
+            "min_value": "درصد تخفیف باید عددی بین ۱ تا ۱۰۰ باشد.",
+            "max_value": "درصد تخفیف باید عددی بین ۱ تا ۱۰۰ باشد.",
+        },
+    )
+    isActive = serializers.BooleanField(source="is_active", required=False)
+    expiresAt = serializers.DateTimeField(source="expires_at", required=False, allow_null=True)
+    usageLimit = serializers.IntegerField(source="usage_limit", required=False, allow_null=True, min_value=1)
+
+    class Meta:
+        model = Coupon
+        fields = ["code", "percent", "isActive", "expiresAt", "usageLimit"]
+
+    def to_internal_value(self, data):
+        mapping = {
+            "is_active": "isActive",
+            "expires_at": "expiresAt",
+            "usage_limit": "usageLimit",
+        }
+        normalized = dict(data)
+        for snake, camel in mapping.items():
+            if snake in normalized and camel not in normalized:
+                normalized[camel] = normalized[snake]
+        if "percent" in normalized:
+            v = normalized["percent"]
+            if isinstance(v, float) and not v.is_integer():
+                raise serializers.ValidationError({"percent": "درصد تخفیف باید یک عدد صحیح باشد."})
+        return super().to_internal_value(normalized)
+
+    def validate_code(self, value):
+        code = value.strip().upper()
+        if not (3 <= len(code) <= 32):
+            raise serializers.ValidationError("طول کد تخفیف باید بین ۳ تا ۳۲ کاراکتر باشد.")
+        if not re.match(r"^[A-Z0-9_-]+$", code):
+            raise serializers.ValidationError("کد تخفیف فقط می‌تواند شامل حروف انگلیسی، اعداد، خط تیره (-) و زیرخط (_) باشد.")
+
+        qs = Coupon.objects.filter(code__iexact=code)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError("این کد تخفیف قبلاً ثبت شده است و تکراری است.")
+
+        if self.instance and self.instance.used_count > 0 and self.instance.code.upper() != code:
+            raise serializers.ValidationError("امکان تغییر کد تخفیفی که حداقل یک‌بار استفاده شده است وجود ندارد.")
+
+        return code
+
+    def validate_expiresAt(self, value):
+        if value is not None:
+            if self.instance is None and value < timezone.now():
+                raise serializers.ValidationError("تاریخ انقضا نمی‌تواند در گذشته باشد.")
+        return value
+
+    def validate_usageLimit(self, value):
+        if value is not None:
+            if value < 1:
+                raise serializers.ValidationError("سقف تعداد استفاده باید حداقل ۱ باشد.")
+            if self.instance and value < self.instance.used_count:
+                raise serializers.ValidationError(
+                    f"سقف تعداد استفاده نمی‌تواند کمتر از تعداد استفاده‌شده ({self.instance.used_count}) باشد."
+                )
+        return value
+
+    def validate(self, attrs):
+        if self.instance is None:
+            if "code" not in attrs:
+                raise serializers.ValidationError({"code": "کد تخفیف الزامی است."})
+            if "percent" not in attrs:
+                raise serializers.ValidationError({"percent": "درصد تخفیف الزامی است."})
+        return attrs
