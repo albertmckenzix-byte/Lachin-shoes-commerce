@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Download, ChevronDown, Check, AlertCircle } from 'lucide-react'
 import { formatNumber } from '../utils/format'
+import { exportOrders } from '../utils/exportOrders'
 import {
   ORDERS,
   NEXT_STATUS,
@@ -424,32 +426,80 @@ export default function OrdersList() {
     }
   }, [orders])
 
-  // ── CSV export ─────────────────────────────────────────────────────────────
-  const handleExportCsv = () => {
-    const rows = [
-      ['شماره سفارش', 'مشتری', 'شهر', 'تاریخ', 'مبلغ (تومان)', 'پرداخت', 'وضعیت'],
-      ...filtered.map((o) => [
-        o.orderNumber,
-        o.customer.name,
-        o.customer.city,
-        toJalali(o.createdAt),
-        o.total,
-        PAYMENT_STATUS_LABELS[o.paymentStatus],
-        STATUS_LABELS[o.status],
-      ]),
-    ]
-    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(',')).join('\n')
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'orders.csv'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
+  // ── Excel / CSV Export ─────────────────────────────────────────────────────
+  const [exportMenuOpen, setExportMenuOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const exportMenuRef = useRef(null)
+
+  // Toast feedback
+  const [toast, setToast] = useState(null)
+  const toastTimerRef = useRef(null)
+
+  const showToast = useCallback((message, type = 'success') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToast({ message, type })
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null)
+    }, 3500)
+  }, [])
+
+  // Close export menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
+        setExportMenuOpen(false)
+      }
+    }
+    if (exportMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [exportMenuOpen])
+
+  const handleExport = useCallback(
+    (format = 'excel') => {
+      if (!filtered || filtered.length === 0) {
+        showToast('هیچ سفارشی با فیلترهای انتخابی برای خروجی گرفتن وجود ندارد.', 'error')
+        return
+      }
+
+      try {
+        setExporting(true)
+        const tabSuffix = activeTab !== 'all' ? `-${activeTab}` : ''
+        const baseName = `lachin-orders${tabSuffix}`
+        const result = exportOrders(filtered, format, baseName)
+        const countFa = formatNumber(result.count)
+        const formatLabel = format === 'csv' ? 'CSV پستی' : 'اکسل'
+        showToast(`فایل ${formatLabel} با موفقیت ذخیره شد (${countFa} سفارش)`, 'success')
+      } catch (err) {
+        showToast(err.message || 'خطا در ایجاد فایل خروجی', 'error')
+      } finally {
+        setExporting(false)
+        setExportMenuOpen(false)
+      }
+    },
+    [filtered, activeTab, showToast]
+  )
 
   return (
     <div>
+      {/* Toast Notification */}
+      {toast && (
+        <div
+          role="status"
+          className={`fixed bottom-6 left-6 z-50 flex items-center gap-2 rounded-lg px-4 py-3 text-sm text-white shadow-lg transition-all ${
+            toast.type === 'error' ? 'bg-[#B3261E]' : 'bg-[#1f6b34]'
+          }`}
+        >
+          {toast.type === 'error' ? (
+            <AlertCircle className="h-4 w-4 shrink-0" />
+          ) : (
+            <Check className="h-4 w-4 shrink-0" />
+          )}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
       {/* ── Page header ── */}
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -459,13 +509,61 @@ export default function OrdersList() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleExportCsv}
-            className="flex h-11 items-center rounded-full border-[1.5px] border-[#D9D9D6] px-5 text-sm font-semibold text-[#111] hover:border-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
-          >
-            خروجی اکسل
-          </button>
+          {/* Export Button with Format Dropdown */}
+          <div className="relative inline-flex items-stretch" ref={exportMenuRef}>
+            <button
+              type="button"
+              onClick={() => handleExport('excel')}
+              disabled={exporting}
+              className="flex h-11 items-center gap-2 rounded-r-full border-[1.5px] border-l-0 border-[#D9D9D6] bg-white pr-4 pl-3 text-sm font-semibold text-[#111] transition-colors hover:border-black hover:bg-[#FAFAF8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black disabled:cursor-not-allowed disabled:opacity-50"
+              title="دانلود فایل اکسل مناسب برای انبار و پست"
+            >
+              <Download className="h-4 w-4 text-[#555]" />
+              <span>خروجی اکسل</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setExportMenuOpen((prev) => !prev)}
+              disabled={exporting}
+              aria-label="انتخاب فرمت خروجی"
+              className="flex h-11 items-center justify-center rounded-l-full border-[1.5px] border-[#D9D9D6] bg-white px-2.5 text-[#555] transition-colors hover:border-black hover:bg-[#FAFAF8] hover:text-[#111] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </button>
+
+            {/* Dropdown Menu */}
+            {exportMenuOpen && (
+              <div className="absolute left-0 top-full mt-1.5 z-50 w-56 rounded-lg border border-[#E4E4E2] bg-white py-1.5 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => handleExport('excel')}
+                  className="flex w-full items-center justify-between px-3.5 py-2.5 text-right text-xs text-[#111] hover:bg-[#FAFAF8] transition-colors"
+                >
+                  <div className="flex flex-col">
+                    <span className="font-semibold">فایل اکسل (.xls)</span>
+                    <span className="text-[10px] text-[#6B6B6B]">جدول راست‌چین و استایل‌دار</span>
+                  </div>
+                  <span className="rounded bg-[#FAFAF8] px-1.5 py-0.5 text-[10px] font-mono text-[#666] border border-[#E4E4E2]">
+                    XLS
+                  </span>
+                </button>
+                <div className="my-1 border-t border-[#EEE]" />
+                <button
+                  type="button"
+                  onClick={() => handleExport('csv')}
+                  className="flex w-full items-center justify-between px-3.5 py-2.5 text-right text-xs text-[#111] hover:bg-[#FAFAF8] transition-colors"
+                >
+                  <div className="flex flex-col">
+                    <span className="font-semibold">فایل داده پستی (.csv)</span>
+                    <span className="text-[10px] text-[#6B6B6B]">سازگار با سامانه‌های پستی</span>
+                  </div>
+                  <span className="rounded bg-[#FAFAF8] px-1.5 py-0.5 text-[10px] font-mono text-[#666] border border-[#E4E4E2]">
+                    CSV
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={() => navigate('/admin/orders/new')}
