@@ -11,6 +11,8 @@ import ProductEdit from './admin/ProductEdit'
 import OrdersList from './admin/OrdersList'
 import OrderCreate from './admin/OrderCreate'
 import CustomersList from './admin/CustomersList'
+import CouponsList from './admin/CouponsList'
+import StoreSettings from './admin/StoreSettings'
 import Dashboard from './admin/Dashboard'
 import Home from './pages/Home'
 import AllProducts from './pages/AllProducts'
@@ -58,6 +60,8 @@ function App() {
                     <Route path="/admin/orders" element={<OrdersList />} />
                     <Route path="/admin/orders/new" element={<OrderCreate />} />
                     <Route path="/admin/customers" element={<CustomersList />} />
+                    <Route path="/admin/coupons" element={<CouponsList />} />
+                    <Route path="/admin/settings" element={<StoreSettings />} />
                   </Route>
                 </Route>
               </Route>
