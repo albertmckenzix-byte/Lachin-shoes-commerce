@@ -42,6 +42,11 @@ def send_sms(phone: str, message: str) -> dict:
         return {"status": "error", "error": str(exc)}
 
 
+def send_otp_sms(phone: str, code: str) -> dict:
+    msg = f"کفش لاچین: کد تایید ورود شما {code} است. این کد تا ۲ دقیقه معتبر است."
+    return send_sms(phone, msg)
+
+
 def send_order_created_sms(order) -> dict:
     msg = (
         f"کفش لاچین: سفارش #{order.number} شما با موفقیت ثبت شد. "

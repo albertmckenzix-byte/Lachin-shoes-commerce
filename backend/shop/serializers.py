@@ -658,3 +658,94 @@ class AdminCouponCreateUpdateSerializer(serializers.ModelSerializer):
             if "percent" not in attrs:
                 raise serializers.ValidationError({"percent": "درصد تخفیف الزامی است."})
         return attrs
+
+
+# =============================================================================
+# Customer Auth Serializers
+# =============================================================================
+
+class SendOtpSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+
+    def validate_phone(self, value):
+        from shop.services.orders import _normalize_phone
+        try:
+            return _normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+
+
+class VerifyOtpSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+    code = serializers.CharField(max_length=10)
+
+    def validate_phone(self, value):
+        from shop.services.orders import _normalize_phone
+        try:
+            return _normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+
+    def validate_code(self, value):
+        clean = "".join(c for c in str(value) if c.isdigit())
+        if not clean:
+            raise serializers.ValidationError("کد تأیید باید عددی باشد.")
+        return clean
+
+
+class CustomerRegisterSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+    first_name = serializers.CharField(max_length=100)
+    last_name = serializers.CharField(max_length=100)
+    password = serializers.CharField(max_length=128, required=False, allow_blank=True)
+    email = serializers.EmailField(required=False, allow_blank=True)
+
+    def validate_phone(self, value):
+        from shop.services.orders import _normalize_phone
+        try:
+            return _normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+
+    def validate_first_name(self, value):
+        val = value.strip()
+        if not val:
+            raise serializers.ValidationError("نام الزامی است.")
+        return val
+
+    def validate_last_name(self, value):
+        val = value.strip()
+        if not val:
+            raise serializers.ValidationError("نام خانوادگی الزامی است.")
+        return val
+
+
+class CustomerPasswordLoginSerializer(serializers.Serializer):
+    phone = serializers.CharField(max_length=20)
+    password = serializers.CharField(max_length=128)
+
+    def validate_phone(self, value):
+        from shop.services.orders import _normalize_phone
+        try:
+            return _normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+
+
+class CustomerProfileSerializer(serializers.ModelSerializer):
+    firstName = serializers.CharField(source="first_name")
+    lastName = serializers.CharField(source="last_name")
+
+    class Meta:
+        model = Customer
+        fields = [
+            "id",
+            "phone",
+            "firstName",
+            "lastName",
+            "email",
+            "city",
+            "created_at",
+        ]
+        read_only_fields = ["id", "phone", "created_at"]
+

@@ -1,5 +1,9 @@
+import random
+from datetime import timedelta
+
 from django.conf import settings
 from django.contrib.auth import authenticate
+from django.contrib.auth.models import User
 from django.db.models import Count, Max, Q, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponseRedirect
@@ -9,12 +13,12 @@ from PIL import Image
 from rest_framework import generics, status
 from rest_framework.authtoken.models import Token
 from rest_framework.parsers import FormParser, MultiPartParser
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from rest_framework.views import APIView
 
-from .models import Coupon, Customer, Order, Product, ProductImage, ProductSize, StoreSettings
+from .models import Coupon, Customer, OTPCode, Order, Product, ProductImage, ProductSize, StoreSettings
 from .permissions import IsStaffUser
 from .serializers import (
     AdminCouponCreateUpdateSerializer,
@@ -29,9 +33,14 @@ from .serializers import (
     AdminStoreSettingsSerializer,
     CouponCheckSerializer,
     CreateOrderSerializer,
+    CustomerPasswordLoginSerializer,
+    CustomerProfileSerializer,
+    CustomerRegisterSerializer,
     OrderDetailPublicSerializer,
     OrderPublicSerializer,
     PublicProductSerializer,
+    SendOtpSerializer,
+    VerifyOtpSerializer,
 )
 from .services.orders import (
     OrderError,
@@ -786,3 +795,197 @@ class AdminCouponDetailView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         coupon = serializer.save()
         return Response(AdminCouponSerializer(coupon).data)
+
+
+# =============================================================================
+# Customer Authentication Views (OTP, Register, Password Login, Profile)
+# =============================================================================
+
+class CustomerSendOtpView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = SendOtpSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        phone = serializer.validated_data["phone"]
+        code = f"{random.randint(10000, 99999)}"
+        now = timezone.now()
+        expires_at = now + timedelta(minutes=2)
+
+        # Invalidate previous unused codes for this phone
+        OTPCode.objects.filter(phone=phone, is_used=False).update(is_used=True)
+        OTPCode.objects.create(phone=phone, code=code, expires_at=expires_at)
+
+        from .services.sms import send_otp_sms
+        send_otp_sms(phone, code)
+
+        res = {
+            "success": True,
+            "message": "کد تأیید با موفقیت ارسال شد.",
+            "expiresIn": 120,
+            "isNewUser": not Customer.objects.filter(phone=phone).exists(),
+        }
+        if settings.DEBUG:
+            res["code"] = code
+        return Response(res, status=status.HTTP_200_OK)
+
+
+class CustomerVerifyOtpView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = VerifyOtpSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        phone = serializer.validated_data["phone"]
+        code = serializer.validated_data["code"]
+        now = timezone.now()
+
+        otp = OTPCode.objects.filter(
+            phone=phone, code=code, is_used=False, expires_at__gte=now
+        ).first()
+        if not otp:
+            return Response(
+                {"error": "کد تأیید وارد شده نامعتبر است یا منقضی شده است."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        otp.is_used = True
+        otp.save(update_fields=["is_used"])
+
+        user, _ = User.objects.get_or_create(username=phone)
+        token, _ = Token.objects.get_or_create(user=user)
+
+        customer, _ = Customer.objects.get_or_create(phone=phone)
+        if customer.user != user:
+            customer.user = user
+            customer.save(update_fields=["user"])
+
+        is_complete = bool(customer.first_name and customer.last_name)
+        return Response(
+            {
+                "token": token.key,
+                "customer": CustomerProfileSerializer(customer).data,
+                "isNewUser": not is_complete,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class CustomerRegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = CustomerRegisterSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+        phone = data["phone"]
+
+        user, _ = User.objects.get_or_create(username=phone)
+        if data.get("password"):
+            user.set_password(data["password"])
+            user.save()
+        token, _ = Token.objects.get_or_create(user=user)
+
+        customer, _ = Customer.objects.get_or_create(phone=phone)
+        customer.user = user
+        customer.first_name = data["first_name"]
+        customer.last_name = data["last_name"]
+        if data.get("email"):
+            customer.email = data["email"]
+        customer.save()
+
+        return Response(
+            {
+                "token": token.key,
+                "customer": CustomerProfileSerializer(customer).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class CustomerPasswordLoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = CustomerPasswordLoginSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        phone = serializer.validated_data["phone"]
+        password = serializer.validated_data["password"]
+
+        user = authenticate(username=phone, password=password)
+        if not user:
+            return Response(
+                {"error": "شماره موبایل یا کلمه عبور اشتباه است."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        token, _ = Token.objects.get_or_create(user=user)
+        customer, _ = Customer.objects.get_or_create(phone=phone)
+        if customer.user != user:
+            customer.user = user
+            customer.save(update_fields=["user"])
+
+        return Response(
+            {
+                "token": token.key,
+                "customer": CustomerProfileSerializer(customer).data,
+            }
+        )
+
+
+class CustomerMeView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        customer = getattr(request.user, "customer_profile", None)
+        if not customer:
+            customer, _ = Customer.objects.get_or_create(
+                phone=request.user.username, defaults={"user": request.user}
+            )
+        return Response(CustomerProfileSerializer(customer).data)
+
+    def patch(self, request):
+        customer = getattr(request.user, "customer_profile", None)
+        if not customer:
+            customer, _ = Customer.objects.get_or_create(
+                phone=request.user.username, defaults={"user": request.user}
+            )
+        for field in ["firstName", "first_name"]:
+            if field in request.data:
+                customer.first_name = str(request.data[field]).strip()
+        for field in ["lastName", "last_name"]:
+            if field in request.data:
+                customer.last_name = str(request.data[field]).strip()
+        if "email" in request.data:
+            customer.email = str(request.data["email"]).strip()
+        if "city" in request.data:
+            customer.city = str(request.data["city"]).strip()
+        customer.save()
+        return Response(CustomerProfileSerializer(customer).data)
+
+
+class CustomerLogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        Token.objects.filter(user=request.user).delete()
+        return Response({"success": True})
+
+
+class CustomerOrdersView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        customer = getattr(request.user, "customer_profile", None)
+        if not customer:
+            customer = Customer.objects.filter(phone=request.user.username).first()
+        if not customer:
+            return Response({"results": []})
+        orders = Order.objects.filter(customer=customer).order_by("-created_at")
+        from .serializers import AdminOrderSerializer
+        return Response({"results": AdminOrderSerializer(orders, many=True).data})
+

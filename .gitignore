@@ -43,3 +43,5 @@ backend/db.sqlite3
 *.njsproj
 *.sln
 *.sw?
+
+.vercel

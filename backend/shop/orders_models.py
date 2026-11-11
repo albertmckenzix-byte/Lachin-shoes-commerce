@@ -69,9 +69,16 @@ class Coupon(models.Model):
 
 class Customer(models.Model):
     """
-    Lightweight customer record identified by phone number.
-    No password — authentication is handled separately.
+    Customer record identified by phone number.
+    Optionally attached to a Django auth User for token-based authentication.
     """
+    user = models.OneToOneField(
+        'auth.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="customer_profile",
+    )
     phone = models.CharField(max_length=15, unique=True)
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100)
@@ -92,6 +99,36 @@ class Customer(models.Model):
             digits = "0" + digits
         self.phone = digits
         super().save(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# 3.5. OTPCode
+# ---------------------------------------------------------------------------
+
+class OTPCode(models.Model):
+    """
+    Stores 5-digit verification codes sent to customers via SMS.
+    Valid for a short duration (typically 2 minutes).
+    """
+    phone = models.CharField(max_length=15, db_index=True)
+    code = models.CharField(max_length=6)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["phone", "is_used", "expires_at"]),
+        ]
+
+    def __str__(self):
+        return f"OTP for {self.phone}: {self.code}"
+
+    @property
+    def is_valid(self):
+        from django.utils import timezone
+        return not self.is_used and timezone.now() <= self.expires_at
 
 
 # ---------------------------------------------------------------------------

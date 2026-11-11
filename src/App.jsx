@@ -1,9 +1,11 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { CartProvider } from './contexts/CartContext'
 import { MenuProvider } from './contexts/MenuContext'
+import { CustomerAuthProvider } from './contexts/CustomerAuthContext'
 import MainLayout from './layouts/MainLayout'
 import { AuthProvider, useAuth } from './admin/AuthContext'
 import { ProductsProvider } from './context/ProductsContext'
+import AuthModal from './components/auth/AuthModal'
 import AdminLoginPage from './admin/AdminLoginPage'
 import AdminLayout from './admin/AdminLayout'
 import ProductsList from './admin/ProductsList'
@@ -35,9 +37,11 @@ function App() {
     <ProductsProvider>
       <CartProvider>
         <MenuProvider>
-          <ScrollToTop />
-          <ErrorBoundary>
-            <Routes>
+          <CustomerAuthProvider>
+            <ScrollToTop />
+            <ErrorBoundary>
+              <AuthModal />
+              <Routes>
               <Route element={<MainLayout />}>
                 <Route path="/" element={<Home />} />
                 <Route path="/all-products" element={<AllProducts />} />
@@ -67,9 +71,10 @@ function App() {
               </Route>
             </Routes>
           </ErrorBoundary>
-        </MenuProvider>
-      </CartProvider>
-    </ProductsProvider>
+        </CustomerAuthProvider>
+      </MenuProvider>
+    </CartProvider>
+  </ProductsProvider>
   )
 }
 

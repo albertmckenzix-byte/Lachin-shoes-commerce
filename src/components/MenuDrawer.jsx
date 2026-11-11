@@ -1,8 +1,9 @@
 import { useRef, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, LogOut, User } from 'lucide-react'
 import { menuData } from '../data/menu'
 import { useMenu } from '../contexts/MenuContext'
+import { useCustomerAuth } from '../contexts/CustomerAuthContext'
 import { Link, useLocation } from 'react-router-dom'
 
 const SUBMENU_ROUTES = {
@@ -23,6 +24,7 @@ const TOP_LEVEL_ROUTES = {
 export default function MenuDrawer() {
   const { t, i18n } = useTranslation()
   const { isMenuOpen, closeMenu, setShopExpanded } = useMenu()
+  const { customer, isAuthenticated, openAuthModal, logout } = useCustomerAuth()
   const drawerRef = useRef(null)
   const closeButtonRef = useRef(null)
   const previousActiveElement = useRef(null)
@@ -302,6 +304,50 @@ export default function MenuDrawer() {
             )
           })}
         </nav>
+
+        {/* Customer Auth Profile in Menu Drawer */}
+        <div className="mt-8 pt-6 border-t border-[#E5E5E5]">
+          {isAuthenticated ? (
+            <div className="p-4 rounded-2xl bg-[#F8F8F7] border border-[#EBEBEB] space-y-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-black text-white flex items-center justify-center font-bold text-sm">
+                  {customer?.firstName ? customer.firstName[0] : 'U'}
+                </div>
+                <div className="text-start">
+                  <p className="font-bold text-sm text-black">
+                    {customer?.firstName
+                      ? `${customer.firstName} ${customer.lastName || ''}`
+                      : 'کاربر لاچین'}
+                  </p>
+                  <p className="text-xs text-neutral-500 font-mono">{customer?.phone}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  closeMenu()
+                  logout()
+                }}
+                className="w-full py-2 px-3 rounded-full border border-red-200 text-red-600 hover:bg-red-50 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>خروج از حساب</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => {
+                closeMenu()
+                openAuthModal('otp')
+              }}
+              className="w-full py-3 rounded-full bg-black text-white text-xs font-bold hover:bg-neutral-800 transition-all flex items-center justify-center gap-2 shadow-sm"
+            >
+              <User className="w-4 h-4" />
+              <span>ورود یا ثبت‌نام در لاچین</span>
+            </button>
+          )}
+        </div>
       </aside>
     </>
   )

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
-import { ChevronDown, Lock, Search, Check } from 'lucide-react'
+import { ChevronDown, Lock, Search, Check, UserCheck, LogIn } from 'lucide-react'
+import { useCustomerAuth } from '../../contexts/CustomerAuthContext'
 
 export const IRAN_PROVINCES = [
   'آذربایجان شرقی',
@@ -260,7 +261,22 @@ export default function InformationForm({
   setSubmitted,
 }) {
   const { t } = useTranslation()
+  const { customer, isAuthenticated, openAuthModal } = useCustomerAuth()
   const [touched, setTouched] = useState({})
+
+  // Automatically pre-fill fields if customer is logged in
+  useEffect(() => {
+    if (isAuthenticated && customer) {
+      setFormData((prev) => ({
+        ...prev,
+        firstName: prev.firstName || customer.firstName || '',
+        lastName: prev.lastName || customer.lastName || '',
+        phone: prev.phone || customer.phone || '',
+        email: prev.email || customer.email || '',
+        city: prev.city || customer.city || '',
+      }))
+    }
+  }, [isAuthenticated, customer, setFormData])
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -358,14 +374,23 @@ export default function InformationForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate>
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
         <h2 className="text-[24px] font-normal text-black leading-[1.3]">{t('checkout.information')}</h2>
-        <Trans
-          i18nKey="checkout.loginPrompt"
-          components={{ 1: <a href="#" className="underline text-black hover:text-black" /> }}
-        >
-          {t('checkout.loginPrompt')}
-        </Trans>
+        {isAuthenticated ? (
+          <div className="flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+            <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>اطلاعات حساب {customer?.firstName || customer?.phone}</span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => openAuthModal('otp')}
+            className="text-xs text-neutral-600 hover:text-black flex items-center gap-1 underline underline-offset-4"
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            <span>حساب کاربری دارید؟ ورود سریع</span>
+          </button>
+        )}
       </div>
 
       <h3 className="text-[14px] font-semibold text-black leading-[1.3] mt-7 mb-2">
