@@ -1358,3 +1358,28 @@ class CustomerAddressSetDefaultView(APIView):
         address.is_default = True
         address.save()
         return Response(CustomerAddressSerializer(address).data)
+
+
+class AdminExpirePendingOrdersView(APIView):
+    """
+    POST /api/admin/orders/expire-pending/
+    Allows an admin to manually trigger the expiration check on demand
+    and inspect scheduler status.
+    """
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        from shop.services.scheduler import get_scheduler_status
+        return Response(get_scheduler_status())
+
+    def post(self, request):
+        from shop.services.orders import expire_pending_orders
+        count = expire_pending_orders()
+        from shop.services.scheduler import get_scheduler_status
+        status_info = get_scheduler_status()
+        return Response({
+            "success": True,
+            "expiredCount": count,
+            "message": f"{count} سفارش منقضی لغو و موجودی به انبار بازگردانده شد." if count else "هیچ سفارش منقضی‌ای یافت نشد.",
+            "scheduler": status_info,
+        })

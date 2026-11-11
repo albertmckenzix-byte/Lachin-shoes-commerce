@@ -5,6 +5,7 @@ from .views import (
     AdminCouponListCreateView,
     AdminCustomerListView,
     AdminDashboardView,
+    AdminExpirePendingOrdersView,
     AdminLoginView,
     AdminLogoutView,
     AdminMeView,
@@ -83,6 +84,7 @@ urlpatterns = [
     path('admin/orders/new/', AdminOrderCreateView.as_view(), name='admin-order-create'),
     path('admin/orders/<int:number>/', AdminOrderDetailView.as_view(), name='admin-order-detail'),
     path('admin/orders/<int:number>/send-shipped-sms/', AdminOrderSendShippedSmsView.as_view(), name='admin-order-send-shipped-sms'),
+    path('admin/orders/expire-pending/', AdminExpirePendingOrdersView.as_view(), name='admin-orders-expire-pending'),
     path('admin/customers/', AdminCustomerListView.as_view(), name='admin-customers-list'),
     path('admin/dashboard/', AdminDashboardView.as_view(), name='admin-dashboard'),
     # Order endpoints

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Download, ChevronDown, Check, AlertCircle, Truck, Send, Loader2 } from 'lucide-react'
+import { Download, ChevronDown, Check, AlertCircle, Truck, Send, Loader2, RotateCw } from 'lucide-react'
 import { formatNumber } from '../utils/format'
 import { exportOrders } from '../utils/exportOrders'
 import {
@@ -508,6 +508,21 @@ export default function OrdersList() {
     }, 3500)
   }, [])
 
+  const [isExpiring, setIsExpiring] = useState(false)
+
+  const handleExpirePending = useCallback(async () => {
+    setIsExpiring(true)
+    try {
+      const res = await api('/admin/orders/expire-pending/', { method: 'POST' })
+      showToast(res.message || 'بررسی انبار انجام شد.')
+      loadOrders()
+    } catch {
+      showToast('خطا در آزادسازی سفارشات منقضی.', 'error')
+    } finally {
+      setIsExpiring(false)
+    }
+  }, [loadOrders, showToast])
+
   // Close export menu when clicking outside
   useEffect(() => {
     function handleClickOutside(e) {
@@ -574,6 +589,22 @@ export default function OrdersList() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Expire Pending Orders Button */}
+          <button
+            type="button"
+            onClick={handleExpirePending}
+            disabled={isExpiring}
+            className="flex h-11 items-center gap-2 rounded-full border-[1.5px] border-[#D9D9D6] bg-white px-4 text-sm font-semibold text-[#111] transition-colors hover:border-black hover:bg-[#FAFAF8] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black disabled:cursor-not-allowed disabled:opacity-50"
+            title="آزادسازی سفارشاتی که بیش از مهلت مقرر در درگاه پرداخت رها شده‌اند"
+          >
+            {isExpiring ? (
+              <Loader2 className="h-4 w-4 animate-spin text-black" />
+            ) : (
+              <RotateCw className="h-4 w-4 text-[#555]" />
+            )}
+            <span>آزادسازی انبار</span>
+          </button>
+
           {/* Export Button with Format Dropdown */}
           <div className="relative inline-flex items-stretch" ref={exportMenuRef}>
             <button

@@ -1,0 +1,11 @@
+[Unit]
+Description=Lachin Shoes - Run Expire Pending Orders every 10 minutes
+Requires=lachin-expire-orders.service
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+Unit=lachin-expire-orders.service
+
+[Install]
+WantedBy=timers.target

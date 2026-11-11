@@ -1,0 +1,15 @@
+[Unit]
+Description=Lachin Shoes - Expire Pending Unpaid Orders Service
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/lachin-shoes/backend
+ExecStart=/var/www/lachin-shoes/backend/venv/bin/python manage.py expire_pending_orders
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
