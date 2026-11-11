@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
+import { fetchFavorites, toggleFavoriteApi, syncFavoritesApi } from '../api/favorites'
+import { useCustomerAuth } from './CustomerAuthContext'
 
 const WishlistContext = createContext(null)
 
@@ -28,10 +30,41 @@ function saveFavorites(items) {
 }
 
 export function WishlistProvider({ children }) {
+  let auth = null
+  try {
+    auth = useCustomerAuth()
+  } catch {
+    // Graceful fallback if rendered outside CustomerAuthProvider (e.g. unit tests)
+  }
+  const token = auth?.token
+
   const [favorites, setFavorites] = useState(loadFavorites)
   const [isFavoritesOpen, setIsFavoritesOpen] = useState(false)
   const [toast, setToast] = useState(null)
   const toastTimerRef = useRef(null)
+
+  // Sync with server when user logs in
+  useEffect(() => {
+    if (!token) return
+    const localSlugs = favorites.map((f) => f.slug).filter(Boolean)
+    if (localSlugs.length > 0) {
+      syncFavoritesApi(localSlugs, token)
+        .then((res) => {
+          if (res?.results) {
+            setFavorites(res.results)
+          }
+        })
+        .catch(() => {})
+    } else {
+      fetchFavorites(token)
+        .then((res) => {
+          if (res?.results) {
+            setFavorites(res.results)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [token])
 
   // Save to localStorage whenever favorites change
   useEffect(() => {
@@ -116,6 +149,10 @@ export function WishlistProvider({ children }) {
       const identifier = product.slug || product.id
       const currentlyFav = isFavorite(identifier)
 
+      if (token && product.slug) {
+        toggleFavoriteApi(product.slug, token).catch(() => {})
+      }
+
       if (currentlyFav) {
         removeFavorite(identifier, product.name)
         return false
@@ -124,7 +161,7 @@ export function WishlistProvider({ children }) {
         return true
       }
     },
-    [isFavorite, addFavorite, removeFavorite]
+    [isFavorite, addFavorite, removeFavorite, token]
   )
 
   const clearFavorites = useCallback(() => {

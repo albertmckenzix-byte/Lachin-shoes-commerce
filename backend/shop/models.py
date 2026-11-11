@@ -160,3 +160,20 @@ def on_review_save(sender, instance, **kwargs):
 @receiver(post_delete, sender=ProductReview)
 def on_review_delete(sender, instance, **kwargs):
     update_product_rating_stats(instance.product)
+
+
+class WishlistItem(models.Model):
+    customer = models.ForeignKey(
+        Customer, on_delete=models.CASCADE, related_name="wishlist_items"
+    )
+    product = models.ForeignKey(
+        Product, on_delete=models.CASCADE, related_name="wishlisted_by"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("customer", "product")]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.customer.phone} -> {self.product.name}"

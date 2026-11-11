@@ -39,9 +39,9 @@ function App() {
   return (
     <ProductsProvider>
       <CartProvider>
-        <WishlistProvider>
-          <MenuProvider>
-            <CustomerAuthProvider>
+        <CustomerAuthProvider>
+          <WishlistProvider>
+            <MenuProvider>
               <ScrollToTop />
               <ErrorBoundary>
                 <AuthModal />
@@ -77,9 +77,9 @@ function App() {
                   </Route>
                 </Routes>
               </ErrorBoundary>
-            </CustomerAuthProvider>
-          </MenuProvider>
-        </WishlistProvider>
+            </MenuProvider>
+          </WishlistProvider>
+        </CustomerAuthProvider>
       </CartProvider>
     </ProductsProvider>
   )

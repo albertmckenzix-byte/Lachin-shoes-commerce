@@ -29,6 +29,7 @@ from .models import (
     ProductReview,
     ProductSize,
     StoreSettings,
+    WishlistItem,
     update_product_rating_stats,
 )
 from .permissions import IsStaffUser
@@ -1121,3 +1122,93 @@ class AdminProductReviewDetailView(APIView):
         review.delete()
         update_product_rating_stats(product)
         return Response({"success": True}, status=status.HTTP_204_NO_CONTENT)
+
+
+# =============================================================================
+# Customer Wishlist Views (Favorites)
+# =============================================================================
+
+class CustomerWishlistListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        customer = getattr(request.user, "customer_profile", None)
+        if not customer:
+            customer, _ = Customer.objects.get_or_create(
+                phone=request.user.username, defaults={"user": request.user}
+            )
+        items = (
+            WishlistItem.objects.filter(customer=customer)
+            .select_related("product")
+            .prefetch_related("product__images", "product__sizes")
+        )
+        products = [item.product for item in items if item.product.is_active]
+        serializer = PublicProductSerializer(products, many=True)
+        return Response({"count": len(products), "results": serializer.data})
+
+
+class CustomerWishlistToggleView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        customer = getattr(request.user, "customer_profile", None)
+        if not customer:
+            customer, _ = Customer.objects.get_or_create(
+                phone=request.user.username, defaults={"user": request.user}
+            )
+        slug = request.data.get("slug")
+        product_id = request.data.get("product_id") or request.data.get("id")
+
+        product = None
+        if slug:
+            product = Product.objects.filter(slug=slug, is_active=True).first()
+        elif product_id:
+            product = Product.objects.filter(pk=product_id, is_active=True).first()
+
+        if not product:
+            return Response(
+                {"error": "محصول مورد نظر یافت نشد."}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        existing = WishlistItem.objects.filter(customer=customer, product=product).first()
+        if existing:
+            existing.delete()
+            is_fav = False
+        else:
+            WishlistItem.objects.create(customer=customer, product=product)
+            is_fav = True
+
+        count = WishlistItem.objects.filter(customer=customer).count()
+        return Response({
+            "isFavorite": is_fav,
+            "count": count,
+            "product": PublicProductSerializer(product).data,
+        })
+
+
+class CustomerWishlistSyncView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        customer = getattr(request.user, "customer_profile", None)
+        if not customer:
+            customer, _ = Customer.objects.get_or_create(
+                phone=request.user.username, defaults={"user": request.user}
+            )
+        slugs = request.data.get("slugs", [])
+        product_ids = request.data.get("product_ids", [])
+
+        qs = Product.objects.filter(is_active=True).filter(
+            Q(slug__in=slugs) | Q(id__in=product_ids)
+        )
+        for prod in qs:
+            WishlistItem.objects.get_or_create(customer=customer, product=prod)
+
+        items = (
+            WishlistItem.objects.filter(customer=customer)
+            .select_related("product")
+            .prefetch_related("product__images", "product__sizes")
+        )
+        products = [item.product for item in items if item.product.is_active]
+        serializer = PublicProductSerializer(products, many=True)
+        return Response({"count": len(products), "results": serializer.data})
