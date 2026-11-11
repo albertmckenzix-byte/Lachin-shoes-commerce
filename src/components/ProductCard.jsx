@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
+import { Heart } from 'lucide-react'
 import { formatPrice } from '../utils/format'
 import { useCart } from '../contexts/CartContext'
+import { useWishlist } from '../contexts/WishlistContext'
 import { getProductImage } from '../utils/productImages'
 
 export function getBadgeLabel(badge, t) {
@@ -15,7 +17,9 @@ export function getBadgeLabel(badge, t) {
 export default function ProductCard({ product, variant = 'default' }) {
   const { t } = useTranslation()
   const { addItem } = useCart()
+  const { isFavorite, toggleFavorite } = useWishlist()
   const { nameKey, price, oldPrice, badge, slug } = product
+  const isFav = isFavorite(slug || product.id)
   const isListing = variant === 'listing'
   const imageUrl = getProductImage(product)
   const displayName = product.name || t(nameKey)
@@ -51,6 +55,22 @@ export default function ProductCard({ product, variant = 'default' }) {
               {badgeLabel}
             </span>
           )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              toggleFavorite(product)
+            }}
+            aria-label={isFav ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها'}
+            className="absolute top-[10px] start-[10px] z-10 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-xs backdrop-blur-xs transition-transform hover:scale-110 active:scale-95"
+          >
+            <Heart
+              size={16}
+              strokeWidth={1.75}
+              className={isFav ? 'fill-[#E11D48] text-[#E11D48]' : 'text-[#333] hover:text-black'}
+            />
+          </button>
         </div>
         <h3 className={isListing ? 'mt-[14px] text-[11px] font-semibold uppercase tracking-[0.01em] text-black' : 'mt-[14px] text-[12px] font-semibold uppercase tracking-[0.01em] text-black'}>
           {displayName}

@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { CartProvider } from './contexts/CartContext'
+import { WishlistProvider } from './contexts/WishlistContext'
 import { MenuProvider } from './contexts/MenuContext'
 import MainLayout from './layouts/MainLayout'
 import { AuthProvider, useAuth } from './admin/AuthContext'
@@ -21,6 +22,7 @@ import Checkout from './pages/Checkout'
 import OrderSuccess from './pages/OrderSuccess'
 import PaymentSimulator from './pages/PaymentSimulator'
 import ProductDetail from './pages/ProductDetail'
+import Favorites from './pages/Favorites'
 import ScrollToTop from './components/ScrollToTop'
 import ErrorBoundary from './components/ErrorBoundary'
 import FootSizeFinderTest from './pages/FootSizeFinderTest'
@@ -34,10 +36,11 @@ function App() {
   return (
     <ProductsProvider>
       <CartProvider>
-        <MenuProvider>
-          <ScrollToTop />
-          <ErrorBoundary>
-            <Routes>
+        <WishlistProvider>
+          <MenuProvider>
+            <ScrollToTop />
+            <ErrorBoundary>
+              <Routes>
               <Route element={<MainLayout />}>
                 <Route path="/" element={<Home />} />
                 <Route path="/all-products" element={<AllProducts />} />
@@ -46,6 +49,7 @@ function App() {
                 <Route path="/order-success/:number" element={<OrderSuccess />} />
                 <Route path="/payment/simulator" element={<PaymentSimulator />} />
                 <Route path="/product/:slug" element={<ProductDetail />} />
+                <Route path="/favorites" element={<Favorites />} />
                 <Route path="/foot-size-finder" element={<FootSizeFinderTest />} />
               </Route>
               <Route element={<AuthProvider><Outlet /></AuthProvider>}>
@@ -68,8 +72,9 @@ function App() {
             </Routes>
           </ErrorBoundary>
         </MenuProvider>
-      </CartProvider>
-    </ProductsProvider>
+      </WishlistProvider>
+    </CartProvider>
+  </ProductsProvider>
   )
 }
 

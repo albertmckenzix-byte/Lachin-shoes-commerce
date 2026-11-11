@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Search, Heart, ShoppingBag, X } from 'lucide-react'
+import { Search, Heart, ShoppingBag } from 'lucide-react'
 import { useCart } from '../contexts/CartContext'
+import { useWishlist } from '../contexts/WishlistContext'
 import { useMenu } from '../contexts/MenuContext'
 import { useLocation } from 'react-router-dom'
 import { Link } from 'react-router-dom'
@@ -14,8 +15,8 @@ const ANNOUNCEMENT_BAR_HEIGHT = 23
 export default function Header() {
   const { t } = useTranslation()
   const { count } = useCart()
+  const { count: favCount, toggleFavorites } = useWishlist()
   const { toggleMenu, openSearch } = useMenu()
-  const [fav, setFav] = useState(false)
   const [scrolledPastAnnouncement, setScrolledPastAnnouncement] = useState(false)
   const [isOverHero, setIsOverHero] = useState(false)
   const location = useLocation()
@@ -68,16 +69,28 @@ export default function Header() {
             <Search size={20} strokeWidth={1.5} />
           </button>
           <button
-            className={`p-1 ${isOverHero ? 'text-white' : 'text-black'}`}
+            type="button"
+            className={`relative p-1 transition-transform active:scale-95 ${
+              isOverHero ? 'text-white' : 'text-black'
+            }`}
             aria-label={t('header.favorites')}
-            onClick={() => setFav((f) => !f)}
+            onClick={toggleFavorites}
           >
             <Heart
               size={20}
               strokeWidth={1.5}
-              fill={fav ? (isOverHero ? '#fff' : '#000') : 'none'}
+              fill={favCount > 0 ? (isOverHero ? '#fff' : '#000') : 'none'}
               color={isOverHero ? '#fff' : '#000'}
             />
+            {favCount > 0 && (
+              <span
+                className={`absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
+                  isOverHero ? 'bg-white text-black' : 'bg-black text-white'
+                }`}
+              >
+                {formatNumber(favCount)}
+              </span>
+            )}
           </button>
           <Link
             to="/checkout"

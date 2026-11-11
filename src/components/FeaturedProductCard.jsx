@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
+import { Heart } from 'lucide-react'
 import { featuredProduct } from '../data/products'
 import { useCart } from '../contexts/CartContext'
+import { useWishlist } from '../contexts/WishlistContext'
 import { formatPrice } from '../utils/format'
 import { getProductImage } from '../utils/productImages'
 import { getBadgeLabel } from './ProductCard'
@@ -10,8 +12,10 @@ import { getBadgeLabel } from './ProductCard'
 export default function FeaturedProductCard({ product, variant = 'default', className = '' }) {
   const { t, i18n } = useTranslation()
   const { addItem } = useCart()
+  const { isFavorite, toggleFavorite } = useWishlist()
   const data = product || featuredProduct
   const { nameKey, price, oldPrice, badge, slug } = data
+  const isFav = isFavorite(slug || data.id)
   const imageUrl = getProductImage(data)
   const displayName = data.name || t(nameKey)
   const isRTL = i18n.language === 'fa'
@@ -51,6 +55,22 @@ export default function FeaturedProductCard({ product, variant = 'default', clas
             {badgeLabel}
           </span>
         )}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            toggleFavorite(data)
+          }}
+          aria-label={isFav ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها'}
+          className="absolute bottom-2 start-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 shadow-xs backdrop-blur-xs transition-transform hover:scale-110 active:scale-95"
+        >
+          <Heart
+            size={14}
+            strokeWidth={1.75}
+            className={isFav ? 'fill-[#E11D48] text-[#E11D48]' : 'text-[#333] hover:text-black'}
+          />
+        </button>
       </Link>
       <div className="w-full md:w-auto flex-1 min-w-0 flex flex-col justify-between py-1 text-start">
         <div className="text-start">

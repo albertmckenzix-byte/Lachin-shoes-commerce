@@ -1,14 +1,18 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Heart } from 'lucide-react'
 import { useCart } from '../../contexts/CartContext'
+import { useWishlist } from '../../contexts/WishlistContext'
 import { useNavigate } from 'react-router-dom'
 import { formatPrice } from '../../utils/format'
 import SizeSelector from './SizeSelector'
 import QuantityStepper from './QuantityStepper'
 
 export default function PurchasePanel({ product }) {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const { addItem } = useCart()
+  const { isFavorite, toggleFavorite } = useWishlist()
+  const isFav = isFavorite(product.slug || product.id)
   const navigate = useNavigate()
   const [quantity, setQuantity] = useState(1)
   const [selectedSize, setSelectedSize] = useState(null)
@@ -116,15 +120,30 @@ export default function PurchasePanel({ product }) {
       </div>
 
       {outOfStock ? (
-        <button
-          type="button"
-          disabled
-          className="mt-[26px] w-full h-[42px] rounded-[4px] bg-gray-300 text-white text-[13px] font-medium"
-        >
-          ناموجود
-        </button>
+        <div className="mt-[26px] flex items-center gap-[12px]">
+          <button
+            type="button"
+            disabled
+            className="flex-1 h-[42px] rounded-[4px] bg-gray-300 text-white text-[13px] font-medium"
+          >
+            ناموجود
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleFavorite(product)}
+            aria-label={isFav ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها'}
+            title={isFav ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها'}
+            className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[4px] border border-[#D9D9D6] bg-white transition-colors hover:border-black hover:bg-[#FAFAF8] focus:outline-none focus-visible:ring-2 focus-visible:ring-black active:scale-95"
+          >
+            <Heart
+              size={18}
+              strokeWidth={1.75}
+              className={isFav ? 'fill-[#E11D48] text-[#E11D48]' : 'text-[#333] hover:text-black'}
+            />
+          </button>
+        </div>
       ) : (
-        <div className="mt-[26px] flex gap-[12px]">
+        <div className="mt-[26px] flex items-center gap-[12px]">
           <button
             type="button"
             onClick={handleBuyNow}
@@ -138,6 +157,19 @@ export default function PurchasePanel({ product }) {
             className="flex-1 h-[42px] rounded-[4px] border border-black bg-white text-black text-[13px] font-medium transition-colors hover:bg-[#F5F5F5] focus:outline-none focus-visible:ring-2 focus-visible:ring-black"
           >
             {addedToCart ? t('products.added') : t('products.addToCart')}
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleFavorite(product)}
+            aria-label={isFav ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها'}
+            title={isFav ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها'}
+            className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[4px] border border-[#D9D9D6] bg-white transition-colors hover:border-black hover:bg-[#FAFAF8] focus:outline-none focus-visible:ring-2 focus-visible:ring-black active:scale-95"
+          >
+            <Heart
+              size={18}
+              strokeWidth={1.75}
+              className={isFav ? 'fill-[#E11D48] text-[#E11D48]' : 'text-[#333] hover:text-black'}
+            />
           </button>
         </div>
       )}
