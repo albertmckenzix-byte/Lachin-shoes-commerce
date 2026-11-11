@@ -15,6 +15,7 @@ import OrdersList from './admin/OrdersList'
 import OrderCreate from './admin/OrderCreate'
 import CustomersList from './admin/CustomersList'
 import CouponsList from './admin/CouponsList'
+import ReviewsList from './admin/ReviewsList'
 import StoreSettings from './admin/StoreSettings'
 import Dashboard from './admin/Dashboard'
 import Home from './pages/Home'
@@ -68,6 +69,7 @@ function App() {
                         <Route path="/admin/orders" element={<OrdersList />} />
                         <Route path="/admin/orders/new" element={<OrderCreate />} />
                         <Route path="/admin/customers" element={<CustomersList />} />
+                        <Route path="/admin/reviews" element={<ReviewsList />} />
                         <Route path="/admin/coupons" element={<CouponsList />} />
                         <Route path="/admin/settings" element={<StoreSettings />} />
                       </Route>

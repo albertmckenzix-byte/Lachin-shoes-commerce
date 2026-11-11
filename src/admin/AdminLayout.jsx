@@ -12,6 +12,7 @@ const NAV_ITEMS = [
   { label: 'محصولات', to: '/admin/products' },
   { label: 'سفارش‌ها', to: '/admin/orders', badge: NEW_ORDERS_COUNT },
   { label: 'مشتریان', to: '/admin/customers' },
+  { label: 'نظرات و امتیازها', to: '/admin/reviews' },
   { label: 'کدهای تخفیف', to: '/admin/coupons' },
   { label: 'تنظیمات', to: '/admin/settings' },
 ]

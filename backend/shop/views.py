@@ -4,7 +4,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Avg, Count, Max, Q, Sum
 from django.db.models.functions import Coalesce
 from django.http import HttpResponseRedirect
 from django.shortcuts import get_object_or_404
@@ -18,7 +18,19 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from rest_framework.views import APIView
 
-from .models import Coupon, Customer, OTPCode, Order, Product, ProductImage, ProductSize, StoreSettings
+from .models import (
+    Coupon,
+    Customer,
+    OTPCode,
+    Order,
+    OrderItem,
+    Product,
+    ProductImage,
+    ProductReview,
+    ProductSize,
+    StoreSettings,
+    update_product_rating_stats,
+)
 from .permissions import IsStaffUser
 from .serializers import (
     AdminCouponCreateUpdateSerializer,
@@ -29,15 +41,18 @@ from .serializers import (
     AdminOrderSerializer,
     AdminProductImageSerializer,
     AdminProductListSerializer,
+    AdminProductReviewSerializer,
     AdminProductSerializer,
     AdminStoreSettingsSerializer,
     CouponCheckSerializer,
     CreateOrderSerializer,
+    CreateProductReviewSerializer,
     CustomerPasswordLoginSerializer,
     CustomerProfileSerializer,
     CustomerRegisterSerializer,
     OrderDetailPublicSerializer,
     OrderPublicSerializer,
+    ProductReviewSerializer,
     PublicProductSerializer,
     SendOtpSerializer,
     VerifyOtpSerializer,
@@ -989,3 +1004,120 @@ class CustomerOrdersView(APIView):
         from .serializers import AdminOrderSerializer
         return Response({"results": AdminOrderSerializer(orders, many=True).data})
 
+
+
+# =============================================================================
+# Product Reviews Views
+# =============================================================================
+
+class ProductReviewListCreateView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, slug):
+        product = get_object_or_404(Product, slug=slug, is_active=True)
+        approved_reviews = product.reviews.filter(status="approved").order_by("-created_at")
+        total = approved_reviews.count()
+        avg = round(approved_reviews.aggregate(Avg("rating"))["rating__avg"] or 5.0, 1) if total > 0 else 5.0
+
+        distribution = {
+            "5": approved_reviews.filter(rating=5).count(),
+            "4": approved_reviews.filter(rating=4).count(),
+            "3": approved_reviews.filter(rating=3).count(),
+            "2": approved_reviews.filter(rating=2).count(),
+            "1": approved_reviews.filter(rating=1).count(),
+        }
+
+        serializer = ProductReviewSerializer(approved_reviews, many=True)
+        return Response({
+            "totalReviews": total,
+            "averageRating": avg,
+            "distribution": distribution,
+            "results": serializer.data,
+        })
+
+    def post(self, request, slug):
+        product = get_object_or_404(Product, slug=slug, is_active=True)
+        serializer = CreateProductReviewSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        user = request.user if request.user.is_authenticated else None
+        customer = getattr(user, "customer_profile", None) if user else None
+
+        name = serializer.validated_data.get("name", "").strip()
+        if not name and customer:
+            name = f"{customer.first_name} {customer.last_name}".strip() or customer.phone
+        if not name:
+            name = "کاربر مهمان"
+
+        # Check if buyer is verified
+        is_verified_buyer = False
+        if customer:
+            is_verified_buyer = OrderItem.objects.filter(
+                order__customer=customer,
+                order__payment_status=Order.PaymentStatus.PAID,
+                product=product,
+            ).exists()
+        elif user:
+            is_verified_buyer = OrderItem.objects.filter(
+                order__customer__user=user,
+                order__payment_status=Order.PaymentStatus.PAID,
+                product=product,
+            ).exists()
+
+        review = ProductReview.objects.create(
+            product=product,
+            user=user,
+            customer=customer,
+            name=name,
+            rating=serializer.validated_data["rating"],
+            title=serializer.validated_data.get("title", ""),
+            comment=serializer.validated_data["comment"],
+            is_verified_buyer=is_verified_buyer,
+            status="approved",
+        )
+
+        update_product_rating_stats(product)
+        return Response(ProductReviewSerializer(review).data, status=status.HTTP_201_CREATED)
+
+
+class AdminProductReviewListView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        status_filter = request.query_params.get("status", "all").strip().lower()
+        search = request.query_params.get("search", "").strip()
+
+        qs = ProductReview.objects.select_related("product").order_by("-created_at")
+        if status_filter in ["pending", "approved", "rejected"]:
+            qs = qs.filter(status=status_filter)
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(comment__icontains=search)
+                | Q(title__icontains=search)
+                | Q(product__name__icontains=search)
+            )
+
+        serializer = AdminProductReviewSerializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class AdminProductReviewDetailView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def patch(self, request, pk):
+        review = get_object_or_404(ProductReview, pk=pk)
+        serializer = AdminProductReviewSerializer(review, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        updated = serializer.save()
+        update_product_rating_stats(updated.product)
+        return Response(AdminProductReviewSerializer(updated).data)
+
+    def delete(self, request, pk):
+        review = get_object_or_404(ProductReview, pk=pk)
+        product = review.product
+        review.delete()
+        update_product_rating_stats(product)
+        return Response({"success": True}, status=status.HTTP_204_NO_CONTENT)

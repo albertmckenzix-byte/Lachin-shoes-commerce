@@ -15,6 +15,7 @@ from .models import (
     OrderStatusLog,
     Product,
     ProductImage,
+    ProductReview,
     ProductSize,
     StoreSettings,
 )
@@ -749,3 +750,62 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["id", "phone", "created_at"]
 
+
+
+# =============================================================================
+# Product Review Serializers
+# =============================================================================
+
+class ProductReviewSerializer(serializers.ModelSerializer):
+    isVerifiedBuyer = serializers.BooleanField(source="is_verified_buyer")
+    adminReply = serializers.CharField(source="admin_reply", allow_blank=True)
+    createdAt = serializers.DateTimeField(source="created_at")
+
+    class Meta:
+        model = ProductReview
+        fields = [
+            "id",
+            "name",
+            "rating",
+            "title",
+            "comment",
+            "isVerifiedBuyer",
+            "adminReply",
+            "createdAt",
+        ]
+
+
+class CreateProductReviewSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    title = serializers.CharField(max_length=150, required=False, allow_blank=True)
+    comment = serializers.CharField(min_length=3)
+    rating = serializers.IntegerField(min_value=1, max_value=5)
+
+    class Meta:
+        model = ProductReview
+        fields = ["name", "title", "comment", "rating"]
+
+
+class AdminProductReviewSerializer(serializers.ModelSerializer):
+    productName = serializers.CharField(source="product.name", read_only=True)
+    productSlug = serializers.CharField(source="product.slug", read_only=True)
+    isVerifiedBuyer = serializers.BooleanField(source="is_verified_buyer", read_only=True)
+    adminReply = serializers.CharField(source="admin_reply", allow_blank=True, required=False)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = ProductReview
+        fields = [
+            "id",
+            "product",
+            "productName",
+            "productSlug",
+            "name",
+            "rating",
+            "title",
+            "comment",
+            "isVerifiedBuyer",
+            "status",
+            "adminReply",
+            "createdAt",
+        ]

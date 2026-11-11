@@ -16,6 +16,8 @@ from .views import (
     AdminProductImageReorderView,
     AdminProductImageUploadView,
     AdminProductListCreateView,
+    AdminProductReviewDetailView,
+    AdminProductReviewListView,
     AdminSettingsView,
     AdminSizeTableView,
     CouponCheckView,
@@ -32,12 +34,14 @@ from .views import (
     PaymentVerifyView,
     ProductDetailView,
     ProductListView,
+    ProductReviewListCreateView,
     PublicSettingsView,
 )
 
 urlpatterns = [
     path('products/', ProductListView.as_view(), name='product-list'),
     path('products/<slug:slug>/', ProductDetailView.as_view(), name='product-detail'),
+    path('products/<slug:slug>/reviews/', ProductReviewListCreateView.as_view(), name='product-reviews'),
     # Customer Auth
     path('auth/otp/send/', CustomerSendOtpView.as_view(), name='customer-otp-send'),
     path('auth/otp/verify/', CustomerVerifyOtpView.as_view(), name='customer-otp-verify'),
@@ -56,6 +60,9 @@ urlpatterns = [
     path('admin/products/<int:pk>/images/reorder/', AdminProductImageReorderView.as_view(), name='admin-product-images-reorder'),
     path('admin/products/<int:pk>/images/<int:image_id>/', AdminProductImageDeleteView.as_view(), name='admin-product-image-delete'),
     path('admin/sizes/', AdminSizeTableView.as_view(), name='admin-size-table'),
+    # Admin Reviews
+    path('admin/reviews/', AdminProductReviewListView.as_view(), name='admin-reviews-list'),
+    path('admin/reviews/<int:pk>/', AdminProductReviewDetailView.as_view(), name='admin-reviews-detail'),
     # Admin Orders, Customers, Dashboard
     path('admin/orders/', AdminOrderListView.as_view(), name='admin-orders-list'),
     path('admin/orders/new/', AdminOrderCreateView.as_view(), name='admin-order-create'),

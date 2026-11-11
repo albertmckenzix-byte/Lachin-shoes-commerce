@@ -8,6 +8,7 @@ import Gallery from '../components/product/Gallery'
 import ProductInfo from '../components/product/ProductInfo'
 import PurchasePanel from '../components/product/PurchasePanel'
 import ProductAccordion from '../components/product/ProductAccordion'
+import ProductReviews from '../components/product/ProductReviews'
 import RelatedProducts from '../components/product/RelatedProducts'
 import { formatPrice } from '../utils/format'
 
@@ -72,6 +73,8 @@ export default function ProductDetail() {
             <ProductAccordion product={product} />
           </div>
         </div>
+
+        <ProductReviews product={product} />
 
         <RelatedProducts product={product} products={products} />
       </main>
