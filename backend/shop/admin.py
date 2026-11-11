@@ -150,6 +150,21 @@ class OrderAdmin(admin.ModelAdmin):
     inlines = [OrderItemInline, OrderStatusLogInline]
     date_hierarchy = 'created_at'
 
+    def save_model(self, request, obj, form, change):
+        if change:
+            old_obj = Order.objects.get(pk=obj.pk)
+            status_changed_to_shipped = (old_obj.status != Order.Status.SHIPPED and obj.status == Order.Status.SHIPPED)
+            tracking_added = (old_obj.shipping_tracking_code != obj.shipping_tracking_code and bool(obj.shipping_tracking_code) and obj.status == Order.Status.SHIPPED)
+            super().save_model(request, obj, form, change)
+            if status_changed_to_shipped or tracking_added:
+                try:
+                    from shop.services.sms import send_order_shipped_sms
+                    send_order_shipped_sms(obj)
+                except Exception:
+                    pass
+        else:
+            super().save_model(request, obj, form, change)
+
 
 # ---------------------------------------------------------------------------
 # OrderItem  (standalone — read-only)

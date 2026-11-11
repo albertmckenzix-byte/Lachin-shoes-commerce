@@ -389,6 +389,15 @@ def change_order_status(order: Order, new_status: str, actor: str) -> Order:
 
     if new_status == Order.Status.CANCELLED:
         release_stock(order)
+    elif new_status == Order.Status.SHIPPED:
+        try:
+            from shop.services.sms import send_order_shipped_sms
+            send_order_shipped_sms(order)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Failed to send shipped SMS for order #{order.number}: {exc}"
+            )
 
     return order
 

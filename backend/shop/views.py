@@ -455,10 +455,25 @@ class AdminOrderDetailView(APIView):
         order = get_object_or_404(Order, number=number)
         actor = request.user.username or "admin"
 
+        tracking_code_updated = False
+        new_tracking = request.data.get("shipping_tracking_code")
+        if new_tracking is None and "shippingTrackingCode" in request.data:
+            new_tracking = request.data.get("shippingTrackingCode")
+
+        if new_tracking is not None:
+            new_tracking = str(new_tracking).strip()
+            if new_tracking != order.shipping_tracking_code:
+                order.shipping_tracking_code = new_tracking
+                order.save(update_fields=["shipping_tracking_code", "updated_at"])
+                tracking_code_updated = True
+
+        status_changed_to_shipped = False
         new_status = request.data.get("status")
         if new_status and new_status != order.status:
             try:
                 order = change_order_status(order, new_status, actor=actor)
+                if new_status == Order.Status.SHIPPED:
+                    status_changed_to_shipped = True
             except OrderError as exc:
                 return Response(
                     {"detail": str(exc), "code": exc.code},
@@ -479,7 +494,34 @@ class AdminOrderDetailView(APIView):
             order.note = request.data["note"]
             order.save(update_fields=["note", "updated_at"])
 
+        # If tracking code was updated on an already shipped order (and status was not just changed now,
+        # which change_order_status already handled):
+        if tracking_code_updated and order.status == Order.Status.SHIPPED and not status_changed_to_shipped:
+            try:
+                from shop.services.sms import send_order_shipped_sms
+                send_order_shipped_sms(order)
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Failed to send tracking update SMS for order #{order.number}: {exc}"
+                )
+
         return Response(AdminOrderSerializer(order).data)
+
+
+class AdminOrderSendShippedSmsView(APIView):
+    permission_classes = [IsStaffUser]
+
+    def post(self, request, number):
+        order = get_object_or_404(Order, number=number)
+        from shop.services.sms import send_order_shipped_sms
+        res = send_order_shipped_sms(order)
+        return Response({
+            "success": True,
+            "message": "پیامک ارسال سفارش با موفقیت به مشتری ارسال شد.",
+            "sms_result": res,
+            "order": AdminOrderSerializer(order).data,
+        })
 
 
 class AdminOrderCreateView(APIView):

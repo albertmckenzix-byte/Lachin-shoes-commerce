@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Download, ChevronDown, Check, AlertCircle } from 'lucide-react'
+import { Download, ChevronDown, Check, AlertCircle, Truck, Send, Loader2 } from 'lucide-react'
 import { formatNumber } from '../utils/format'
 import { exportOrders } from '../utils/exportOrders'
 import {
@@ -216,13 +216,60 @@ function OrderDetailPanel({ order, onStatusAdvance, onCancel, onPrint }) {
         </ol>
       </div>
 
+      {/* Postal Tracking Code & SMS Notification */}
+      <div className="rounded-md border border-[#ECECEA] bg-[#FAFAF8] p-3 text-sm">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-[#111]">
+            <Truck className="w-3.5 h-3.5 text-black" />
+            <span>کد رهگیری پستی (پیامک خودکار)</span>
+          </div>
+          {(order.shippingTrackingCode || order.shipping_tracking_code) ? (
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-medium">
+              پیامک فعال
+            </span>
+          ) : (
+            <span className="text-[10px] text-gray-500">ثبت نشده</span>
+          )}
+        </div>
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            dir="ltr"
+            placeholder="مثال: 123456789012345678901234"
+            value={trackingInput}
+            onChange={(e) => setTrackingInput(e.target.value)}
+            className="flex-1 h-9 px-2.5 bg-white border border-[#D9D9D6] rounded text-xs text-black font-mono focus:outline-none focus:border-black"
+          />
+          <button
+            type="button"
+            onClick={handleSaveTracking}
+            disabled={savingTracking}
+            className="h-9 px-3 bg-black text-white rounded text-xs font-medium hover:bg-neutral-800 disabled:opacity-50 transition-colors flex items-center gap-1 flex-shrink-0"
+          >
+            {savingTracking ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <Send className="w-3 h-3" />
+            )}
+            <span>ثبت و پیامک</span>
+          </button>
+        </div>
+
+        {trackingFeedback && (
+          <p className="mt-2 text-[11px] text-emerald-700 font-medium">
+            {trackingFeedback}
+          </p>
+        )}
+      </div>
+
       {/* Actions */}
       {!isCancelled && (
         <div className="flex flex-col gap-2">
           {canAdvance && (
             <button
               type="button"
-              onClick={() => onStatusAdvance(order.id)}
+              onClick={handleAdvanceWithTracking}
               className="flex h-11 w-full items-center justify-center rounded-md bg-black text-sm font-semibold text-white hover:bg-[#222] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
             >
               {nextActionLabel}
@@ -376,17 +423,21 @@ export default function OrdersList() {
   )
 
   // ── Actions ────────────────────────────────────────────────────────────────
-  const handleStatusAdvance = useCallback(async (id) => {
+  const handleStatusAdvance = useCallback(async (id, optionalTrackingCode) => {
     const target = orders.find((o) => o.id === id || o.number === id)
     if (!target) return
     const next = NEXT_STATUS[target.status]
     if (!next) return
 
     const num = target.number || target.id
+    const payload = { status: next }
+    if (optionalTrackingCode) {
+      payload.shipping_tracking_code = optionalTrackingCode
+    }
     try {
       const updated = await api(`/admin/orders/${num}/`, {
         method: 'PATCH',
-        body: { status: next },
+        body: payload,
       })
       setOrders((prev) =>
         prev.map((o) => (o.id === id || o.number === id ? { ...o, ...updated } : o))
@@ -395,10 +446,24 @@ export default function OrdersList() {
       setOrders((prev) =>
         prev.map((o) => {
           if (o.id !== id && o.number !== id) return o
-          return { ...o, status: next }
+          return { ...o, status: next, shippingTrackingCode: optionalTrackingCode || o.shippingTrackingCode }
         })
       )
     }
+  }, [orders])
+
+  const handleUpdateTracking = useCallback(async (id, trackingCode) => {
+    const target = orders.find((o) => o.id === id || o.number === id)
+    if (!target) return
+    const num = target.number || target.id
+    const updated = await api(`/admin/orders/${num}/`, {
+      method: 'PATCH',
+      body: { shipping_tracking_code: trackingCode },
+    })
+    setOrders((prev) =>
+      prev.map((o) => (o.id === id || o.number === id ? { ...o, ...updated } : o))
+    )
+    return updated
   }, [orders])
 
   const handleCancel = useCallback(async (id) => {
@@ -774,6 +839,7 @@ export default function OrdersList() {
             onStatusAdvance={handleStatusAdvance}
             onCancel={handleCancel}
             onPrint={printOrderInvoice}
+            onUpdateTracking={handleUpdateTracking}
           />
         </div>
       </div>

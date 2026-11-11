@@ -404,6 +404,7 @@ class AdminOrderSerializer(serializers.ModelSerializer):
     deliveryMethod = serializers.CharField(source="delivery_method")
     shippingFee = serializers.IntegerField(source="shipping_fee")
     discountTotal = serializers.IntegerField(source="discount_total")
+    shippingTrackingCode = serializers.CharField(source="shipping_tracking_code", required=False, allow_blank=True)
     createdAt = serializers.DateTimeField(source="created_at")
     updatedAt = serializers.DateTimeField(source="updated_at")
 
@@ -414,7 +415,7 @@ class AdminOrderSerializer(serializers.ModelSerializer):
             "delivery_method", "deliveryMethod", "subtotal",
             "shipping_fee", "shippingFee", "discount_total", "discountTotal",
             "total", "coupon_code", "status", "payment_status", "paymentStatus",
-            "payment_method", "note", "stock_released", "createdAt", "updatedAt"
+            "payment_method", "shipping_tracking_code", "shippingTrackingCode", "note", "stock_released", "createdAt", "updatedAt"
         ]
 
     def get_orderNumber(self, obj):

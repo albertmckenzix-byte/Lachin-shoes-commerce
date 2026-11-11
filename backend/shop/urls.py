@@ -10,6 +10,7 @@ from .views import (
     AdminMeView,
     AdminOrderCreateView,
     AdminOrderDetailView,
+    AdminOrderSendShippedSmsView,
     AdminOrderListView,
     AdminProductDetailView,
     AdminProductImageDeleteView,
@@ -81,6 +82,7 @@ urlpatterns = [
     path('admin/orders/', AdminOrderListView.as_view(), name='admin-orders-list'),
     path('admin/orders/new/', AdminOrderCreateView.as_view(), name='admin-order-create'),
     path('admin/orders/<int:number>/', AdminOrderDetailView.as_view(), name='admin-order-detail'),
+    path('admin/orders/<int:number>/send-shipped-sms/', AdminOrderSendShippedSmsView.as_view(), name='admin-order-send-shipped-sms'),
     path('admin/customers/', AdminCustomerListView.as_view(), name='admin-customers-list'),
     path('admin/dashboard/', AdminDashboardView.as_view(), name='admin-dashboard'),
     # Order endpoints
