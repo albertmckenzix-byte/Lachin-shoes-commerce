@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams, Link } from 'react-router-dom'
+import { Heart } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
+import { useWishlist } from '../contexts/WishlistContext'
 import Gallery from '../components/product/Gallery'
 import ProductInfo from '../components/product/ProductInfo'
 import PurchasePanel from '../components/product/PurchasePanel'
@@ -80,8 +82,9 @@ export default function ProductDetail() {
 }
 
 function MobileStickyBar({ product }) {
-  const { t, i18n } = useTranslation()
-  const isRTL = i18n.language === 'fa'
+  const { t } = useTranslation()
+  const { isFavorite, toggleFavorite } = useWishlist()
+  const isFav = isFavorite(product?.slug || product?.id)
 
   return (
     <div className="lg:hidden fixed bottom-0 start-0 end-0 z-50 bg-white border-t border-[#E5E5E5] px-[16px] py-[12px] pb-safe">
@@ -91,15 +94,29 @@ function MobileStickyBar({ product }) {
           <span className="text-[24px] font-semibold text-black">{formatPrice(product.price)}</span>
         </div>
         {product.totalStock === 0 ? (
-          <button
-            type="button"
-            disabled
-            className="flex-1 h-[48px] rounded-[4px] bg-gray-300 text-white text-[13px] font-medium"
-          >
-            ناموجود
-          </button>
+          <div className="flex items-center gap-[12px]">
+            <button
+              type="button"
+              disabled
+              className="flex-1 h-[48px] rounded-[4px] bg-gray-300 text-white text-[13px] font-medium"
+            >
+              ناموجود
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleFavorite(product)}
+              aria-label={isFav ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها'}
+              className="flex h-[48px] w-[48px] shrink-0 items-center justify-center rounded-[4px] border border-[#D9D9D6] bg-white transition-colors hover:border-black active:scale-95"
+            >
+              <Heart
+                size={20}
+                strokeWidth={1.75}
+                className={isFav ? 'fill-[#E11D48] text-[#E11D48]' : 'text-[#333]'}
+              />
+            </button>
+          </div>
         ) : (
-          <>
+          <div className="flex items-center gap-[12px]">
             <button
               type="button"
               className="flex-1 h-[48px] rounded-[4px] border border-black bg-white text-black text-[13px] font-medium transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-black"
@@ -112,7 +129,19 @@ function MobileStickyBar({ product }) {
             >
               {t('purchasePanel.buyNow')}
             </button>
-          </>
+            <button
+              type="button"
+              onClick={() => toggleFavorite(product)}
+              aria-label={isFav ? 'حذف از علاقه‌مندی‌ها' : 'افزودن به علاقه‌مندی‌ها'}
+              className="flex h-[48px] w-[48px] shrink-0 items-center justify-center rounded-[4px] border border-[#D9D9D6] bg-white transition-colors hover:border-black active:scale-95"
+            >
+              <Heart
+                size={20}
+                strokeWidth={1.75}
+                className={isFav ? 'fill-[#E11D48] text-[#E11D48]' : 'text-[#333]'}
+              />
+            </button>
+          </div>
         )}
       </div>
     </div>
