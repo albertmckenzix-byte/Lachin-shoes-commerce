@@ -28,6 +28,9 @@ from .views import (
     CustomerRegisterView,
     CustomerSendOtpView,
     CustomerVerifyOtpView,
+    CustomerAddressDetailView,
+    CustomerAddressListCreateView,
+    CustomerAddressSetDefaultView,
     CustomerWishlistListView,
     CustomerWishlistSyncView,
     CustomerWishlistToggleView,
@@ -53,6 +56,10 @@ urlpatterns = [
     path('auth/me/', CustomerMeView.as_view(), name='customer-me'),
     path('auth/logout/', CustomerLogoutView.as_view(), name='customer-logout'),
     path('auth/my-orders/', CustomerOrdersView.as_view(), name='customer-my-orders'),
+    # Customer Addresses (Saved Addresses)
+    path('customer/addresses/', CustomerAddressListCreateView.as_view(), name='customer-address-list-create'),
+    path('customer/addresses/<int:pk>/', CustomerAddressDetailView.as_view(), name='customer-address-detail'),
+    path('customer/addresses/<int:pk>/set-default/', CustomerAddressSetDefaultView.as_view(), name='customer-address-set-default'),
     # Customer Wishlist (Favorites)
     path('favorites/', CustomerWishlistListView.as_view(), name='customer-wishlist-list'),
     path('favorites/toggle/', CustomerWishlistToggleView.as_view(), name='customer-wishlist-toggle'),

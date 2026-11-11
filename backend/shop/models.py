@@ -7,6 +7,7 @@ from shop.orders_models import (  # noqa: F401  – re-exported for migrations
     StoreSettings,
     Coupon,
     Customer,
+    CustomerAddress,
     OTPCode,
     Order,
     OrderItem,

@@ -1,7 +1,22 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useTranslation, Trans } from 'react-i18next'
-import { ChevronDown, Lock, Search, Check, UserCheck, LogIn } from 'lucide-react'
+import {
+  ChevronDown,
+  Lock,
+  Search,
+  Check,
+  UserCheck,
+  LogIn,
+  MapPin,
+  Plus,
+  Trash2,
+  Home,
+  Briefcase,
+  Loader2,
+} from 'lucide-react'
 import { useCustomerAuth } from '../../contexts/CustomerAuthContext'
+import { fetchAddresses, createAddress, deleteAddress } from '../../api/addresses'
+import { toPersianDigits } from '../../utils/toPersianDigits'
 
 export const IRAN_PROVINCES = [
   'آذربایجان شرقی',
@@ -261,10 +276,20 @@ export default function InformationForm({
   setSubmitted,
 }) {
   const { t } = useTranslation()
-  const { customer, isAuthenticated, openAuthModal } = useCustomerAuth()
+  const { customer, isAuthenticated, openAuthModal, token } = useCustomerAuth()
   const [touched, setTouched] = useState({})
 
-  // Automatically pre-fill fields if customer is logged in
+  // Saved addresses state
+  const [addresses, setAddresses] = useState([])
+  const [loadingAddresses, setLoadingAddresses] = useState(false)
+  const [selectedAddressId, setSelectedAddressId] = useState(null)
+  const [saveToBook, setSaveToBook] = useState(false)
+  const [newAddressTitle, setNewAddressTitle] = useState('خانه')
+  const [isSavingNewAddress, setIsSavingNewAddress] = useState(false)
+  const [addressSaveSuccess, setAddressSaveSuccess] = useState('')
+  const [addressSaveError, setAddressSaveError] = useState('')
+
+  // Pre-fill personal info if customer is logged in
   useEffect(() => {
     if (isAuthenticated && customer) {
       setFormData((prev) => ({
@@ -277,6 +302,157 @@ export default function InformationForm({
       }))
     }
   }, [isAuthenticated, customer, setFormData])
+
+  // Load saved addresses for authenticated customer
+  useEffect(() => {
+    if (!token) {
+      setAddresses([])
+      setSelectedAddressId(null)
+      return
+    }
+    setLoadingAddresses(true)
+    fetchAddresses(token)
+      .then((res) => {
+        const list = res.results || []
+        setAddresses(list)
+        if (list.length > 0) {
+          const def = list.find((a) => a.isDefault || a.is_default) || list[0]
+          setSelectedAddressId(def.id)
+          applyAddressToForm(def)
+        }
+      })
+      .catch((err) => {
+        console.warn('Could not load addresses:', err)
+      })
+      .finally(() => {
+        setLoadingAddresses(false)
+      })
+  }, [token])
+
+  const applyAddressToForm = (addr) => {
+    if (!addr) return
+    let street = addr.address || ''
+    if (addr.buildingNumber || addr.building_number) {
+      street += `، پلاک ${addr.buildingNumber || addr.building_number}`
+    }
+    if (addr.unit) {
+      street += `، واحد ${addr.unit}`
+    }
+
+    setFormData((prev) => {
+      let firstName = prev.firstName
+      let lastName = prev.lastName
+      const recName = addr.recipientName || addr.recipient_name
+      if (recName) {
+        const parts = recName.trim().split(' ')
+        if (parts.length > 1) {
+          firstName = parts[0]
+          lastName = parts.slice(1).join(' ')
+        } else if (parts[0]) {
+          firstName = parts[0]
+        }
+      }
+      return {
+        ...prev,
+        province: addr.province || prev.province,
+        city: addr.city || prev.city,
+        address: street,
+        zipCode: addr.postalCode || addr.postal_code || prev.zipCode,
+        phone: addr.recipientPhone || addr.recipient_phone || prev.phone,
+        firstName,
+        lastName,
+      }
+    })
+
+    setErrors((prev) => ({
+      ...prev,
+      province: '',
+      city: '',
+      address: '',
+      zipCode: '',
+    }))
+  }
+
+  const handleSelectAddress = (addr) => {
+    setSelectedAddressId(addr.id)
+    applyAddressToForm(addr)
+  }
+
+  const handleSelectNewAddress = () => {
+    setSelectedAddressId('new')
+    setFormData((prev) => ({
+      ...prev,
+      province: '',
+      city: '',
+      address: '',
+      zipCode: '',
+    }))
+  }
+
+  const handleSaveCurrentAddress = async () => {
+    if (!token) return
+    setAddressSaveError('')
+    setAddressSaveSuccess('')
+
+    if (!formData.province || !formData.city || !formData.address) {
+      setAddressSaveError('لطفاً استان، شهر و نشانی پستی را کامل وارد کنید.')
+      return
+    }
+
+    setIsSavingNewAddress(true)
+    try {
+      const recipientName =
+        `${formData.firstName || ''} ${formData.lastName || ''}`.trim() ||
+        customer?.phone ||
+        'مشتری'
+      const recipientPhone = formData.phone || customer?.phone || ''
+      const res = await createAddress(
+        {
+          title: newAddressTitle.trim() || 'خانه',
+          recipientName,
+          recipientPhone,
+          province: formData.province,
+          city: formData.city,
+          address: formData.address,
+          postalCode: formData.zipCode,
+          isDefault: addresses.length === 0,
+        },
+        token
+      )
+      setAddresses((prev) => [res, ...prev])
+      setSelectedAddressId(res.id)
+      setSaveToBook(false)
+      setAddressSaveSuccess('آدرس با موفقیت در دفترچه آدرس‌های شما ذخیره شد.')
+      setTimeout(() => setAddressSaveSuccess(''), 4000)
+    } catch (err) {
+      setAddressSaveError(err.message || 'خطا در ثبت آدرس')
+    } finally {
+      setIsSavingNewAddress(false)
+    }
+  }
+
+  const handleDeleteAddress = async (e, id) => {
+    e.stopPropagation()
+    if (!token) return
+    if (!window.confirm('آیا از حذف این آدرس اطمینان دارید؟')) return
+    try {
+      await deleteAddress(id, token)
+      setAddresses((prev) => {
+        const remaining = prev.filter((a) => a.id !== id)
+        if (selectedAddressId === id) {
+          if (remaining.length > 0) {
+            setSelectedAddressId(remaining[0].id)
+            applyAddressToForm(remaining[0])
+          } else {
+            setSelectedAddressId('new')
+          }
+        }
+        return remaining
+      })
+    } catch (err) {
+      alert(err.message || 'خطا در حذف آدرس')
+    }
+  }
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
@@ -374,6 +550,7 @@ export default function InformationForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate>
+      {/* Header with auth status */}
       <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
         <h2 className="text-[24px] font-normal text-black leading-[1.3]">{t('checkout.information')}</h2>
         {isAuthenticated ? (
@@ -393,6 +570,106 @@ export default function InformationForm({
         )}
       </div>
 
+      {/* Saved Addresses Section (Only if authenticated and has addresses) */}
+      {isAuthenticated && addresses.length > 0 && (
+        <div className="mb-6 bg-neutral-50 p-4 rounded-xl border border-neutral-200">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-black" />
+              <span className="text-[13px] font-bold text-black">دفترچه آدرس‌های من</span>
+              <span className="text-[11px] bg-neutral-200 text-neutral-800 px-2 py-0.5 rounded-full font-medium">
+                {toPersianDigits(addresses.length)} آدرس
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleSelectNewAddress}
+              className={`text-[12px] flex items-center gap-1 transition-colors ${
+                selectedAddressId === 'new'
+                  ? 'text-black font-bold underline'
+                  : 'text-neutral-600 hover:text-black'
+              }`}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>استفاده از آدرس دیگر</span>
+            </button>
+          </div>
+
+          {/* Grid of Saved Address Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {addresses.map((addr) => {
+              const isSelected = selectedAddressId === addr.id
+              return (
+                <div
+                  key={addr.id}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleSelectAddress(addr)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      handleSelectAddress(addr)
+                    }
+                  }}
+                  className={`text-right p-3 rounded-lg border transition-all cursor-pointer relative flex flex-col justify-between ${
+                    isSelected
+                      ? 'border-black bg-white shadow-sm ring-1 ring-black'
+                      : 'border-neutral-200 bg-white hover:border-neutral-400'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        {addr.title === 'محل کار' || addr.title === 'کار' ? (
+                          <Briefcase className="w-3.5 h-3.5 text-neutral-700" />
+                        ) : (
+                          <Home className="w-3.5 h-3.5 text-neutral-700" />
+                        )}
+                        <span className="text-[12px] font-bold text-black">{addr.title || 'خانه'}</span>
+                        {(addr.isDefault || addr.is_default) && (
+                          <span className="text-[10px] bg-amber-100 text-amber-900 px-1.5 py-0.5 rounded font-medium">
+                            پیش‌فرض
+                          </span>
+                        )}
+                      </div>
+                      <div className="w-4 h-4 rounded-full border flex items-center justify-center transition-colors border-neutral-400">
+                        {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-black" />}
+                      </div>
+                    </div>
+
+                    <div className="text-[11px] text-neutral-700 font-medium mb-1">
+                      {addr.recipientName || addr.recipient_name}
+                      <span className="text-neutral-400 mx-1">|</span>
+                      <span dir="ltr" className="inline-block">
+                        {toPersianDigits(addr.recipientPhone || addr.recipient_phone)}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-neutral-600 leading-snug line-clamp-2">
+                      {addr.province}، {addr.city}، {addr.address}
+                      {addr.buildingNumber ? `، پلاک ${addr.buildingNumber}` : ''}
+                      {addr.unit ? `، واحد ${addr.unit}` : ''}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 mt-2 border-t border-neutral-100 text-[10px] text-neutral-400">
+                    <span>کد پستی: {toPersianDigits(addr.postalCode || addr.postal_code || '—')}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteAddress(e, addr.id)}
+                      className="text-neutral-400 hover:text-red-600 transition-colors p-1"
+                      title="حذف آدرس"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Personal Info */}
       <h3 className="text-[14px] font-semibold text-black leading-[1.3] mt-7 mb-2">
         {t('checkout.personalInfo')}
       </h3>
@@ -443,9 +720,18 @@ export default function InformationForm({
         />
       </div>
 
-      <h3 className="text-[14px] font-semibold text-black leading-[1.3] mt-7 mb-2">
-        {t('checkout.shippingInfo')}
-      </h3>
+      {/* Shipping Info */}
+      <div className="flex items-center justify-between mt-7 mb-2">
+        <h3 className="text-[14px] font-semibold text-black leading-[1.3]">
+          {t('checkout.shippingInfo')}
+        </h3>
+        {selectedAddressId && selectedAddressId !== 'new' && (
+          <span className="text-[11px] text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded">
+            انتخاب‌شده از دفترچه آدرس
+          </span>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-7 gap-y-2">
         {/* Country locked on Iran */}
         <CountryLockedField />
@@ -498,8 +784,64 @@ export default function InformationForm({
             errorId="address-error"
           />
         </div>
+
+        {/* Save to address book option if entering a new address and authenticated */}
+        {isAuthenticated && (selectedAddressId === 'new' || addresses.length === 0) && (
+          <div className="sm:col-span-2 mt-2 pt-3 border-t border-neutral-100">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="saveToBook"
+                checked={saveToBook}
+                onChange={(e) => setSaveToBook(e.target.checked)}
+                className="w-[14px] h-[14px] border-[#BDBDBD] text-black focus:ring-0 focus:border-black rounded-[2px] cursor-pointer"
+              />
+              <label htmlFor="saveToBook" className="text-[12px] text-neutral-700 cursor-pointer select-none">
+                ذخیره این نشانی در دفترچه آدرس‌های من برای سفارش‌های آینده
+              </label>
+            </div>
+
+            {saveToBook && (
+              <div className="mt-3 flex items-center gap-3 animate-in fade-in flex-wrap">
+                <input
+                  type="text"
+                  value={newAddressTitle}
+                  onChange={(e) => setNewAddressTitle(e.target.value)}
+                  placeholder="عنوان آدرس (مثلاً: خانه، محل کار)"
+                  className="h-9 px-3 border border-neutral-300 rounded text-[12px] text-black placeholder-neutral-400 focus:outline-none focus:border-black"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveCurrentAddress}
+                  disabled={isSavingNewAddress}
+                  className="h-9 px-4 bg-black text-white text-[12px] font-medium rounded hover:bg-neutral-800 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                >
+                  {isSavingNewAddress ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>در حال ذخیره...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>ذخیره در دفترچه</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
+            {addressSaveSuccess && (
+              <p className="text-[11px] text-emerald-600 mt-2 font-medium">{addressSaveSuccess}</p>
+            )}
+            {addressSaveError && (
+              <p className="text-[11px] text-red-600 mt-2">{addressSaveError}</p>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* Consent checkbox */}
       <div className="flex items-center gap-2 mt-6 relative">
         <input
           type="checkbox"

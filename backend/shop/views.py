@@ -21,6 +21,7 @@ from rest_framework.views import APIView
 from .models import (
     Coupon,
     Customer,
+    CustomerAddress,
     OTPCode,
     Order,
     OrderItem,
@@ -48,6 +49,7 @@ from .serializers import (
     CouponCheckSerializer,
     CreateOrderSerializer,
     CreateProductReviewSerializer,
+    CustomerAddressSerializer,
     CustomerPasswordLoginSerializer,
     CustomerProfileSerializer,
     CustomerRegisterSerializer,
@@ -1212,3 +1214,105 @@ class CustomerWishlistSyncView(APIView):
         products = [item.product for item in items if item.product.is_active]
         serializer = PublicProductSerializer(products, many=True)
         return Response({"count": len(products), "results": serializer.data})
+
+
+# =============================================================================
+# Customer Address Views (Saved Addresses)
+# =============================================================================
+
+class CustomerAddressListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_customer(self, request):
+        customer = getattr(request.user, "customer_profile", None)
+        if not customer:
+            customer, _ = Customer.objects.get_or_create(
+                phone=request.user.username, defaults={"user": request.user}
+            )
+        return customer
+
+    def get(self, request):
+        customer = self.get_customer(request)
+        addresses = CustomerAddress.objects.filter(customer=customer)
+        serializer = CustomerAddressSerializer(addresses, many=True)
+        return Response({"count": len(serializer.data), "results": serializer.data})
+
+    def post(self, request):
+        customer = self.get_customer(request)
+        serializer = CustomerAddressSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "اطلاعات آدرس نامعتبر است.", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        address = serializer.save(customer=customer)
+        return Response(CustomerAddressSerializer(address).data, status=status.HTTP_201_CREATED)
+
+
+class CustomerAddressDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_customer(self, request):
+        customer = getattr(request.user, "customer_profile", None)
+        if not customer:
+            customer, _ = Customer.objects.get_or_create(
+                phone=request.user.username, defaults={"user": request.user}
+            )
+        return customer
+
+    def get_object(self, request, pk):
+        customer = self.get_customer(request)
+        return get_object_or_404(CustomerAddress, pk=pk, customer=customer)
+
+    def get(self, request, pk):
+        address = self.get_object(request, pk)
+        return Response(CustomerAddressSerializer(address).data)
+
+    def put(self, request, pk):
+        address = self.get_object(request, pk)
+        serializer = CustomerAddressSerializer(address, data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "اطلاعات آدرس نامعتبر است.", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer.save()
+        return Response(CustomerAddressSerializer(address).data)
+
+    def patch(self, request, pk):
+        address = self.get_object(request, pk)
+        serializer = CustomerAddressSerializer(address, data=request.data, partial=True)
+        if not serializer.is_valid():
+            return Response(
+                {"detail": "اطلاعات آدرس نامعتبر است.", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer.save()
+        return Response(CustomerAddressSerializer(address).data)
+
+    def delete(self, request, pk):
+        address = self.get_object(request, pk)
+        was_default = address.is_default
+        customer = address.customer
+        address.delete()
+        if was_default:
+            next_default = CustomerAddress.objects.filter(customer=customer).first()
+            if next_default:
+                next_default.is_default = True
+                next_default.save(update_fields=["is_default"])
+        return Response({"success": True}, status=status.HTTP_204_NO_CONTENT)
+
+
+class CustomerAddressSetDefaultView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        customer = getattr(request.user, "customer_profile", None)
+        if not customer:
+            customer, _ = Customer.objects.get_or_create(
+                phone=request.user.username, defaults={"user": request.user}
+            )
+        address = get_object_or_404(CustomerAddress, pk=pk, customer=customer)
+        address.is_default = True
+        address.save()
+        return Response(CustomerAddressSerializer(address).data)

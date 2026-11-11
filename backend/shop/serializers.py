@@ -10,6 +10,7 @@ from rest_framework import serializers
 from .models import (
     Coupon,
     Customer,
+    CustomerAddress,
     Order,
     OrderItem,
     OrderStatusLog,
@@ -749,6 +750,79 @@ class CustomerProfileSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "phone", "created_at"]
+
+
+class CustomerAddressSerializer(serializers.ModelSerializer):
+    title = serializers.CharField(max_length=50, required=False, default="خانه")
+    recipient_name = serializers.CharField(max_length=150, required=True)
+    recipient_phone = serializers.CharField(max_length=15, required=True)
+    province = serializers.CharField(max_length=100, required=True)
+    city = serializers.CharField(max_length=100, required=True)
+    address = serializers.CharField(required=True)
+    building_number = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
+    unit = serializers.CharField(max_length=20, required=False, allow_blank=True, default="")
+    postal_code = serializers.CharField(max_length=10, required=False, allow_blank=True, default="")
+    is_default = serializers.BooleanField(required=False, default=False)
+
+    class Meta:
+        model = CustomerAddress
+        fields = [
+            "id",
+            "title",
+            "recipient_name",
+            "recipient_phone",
+            "province",
+            "city",
+            "address",
+            "building_number",
+            "unit",
+            "postal_code",
+            "is_default",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
+
+    def to_internal_value(self, data):
+        data = data.copy() if hasattr(data, "copy") else dict(data)
+        mappings = {
+            "recipientName": "recipient_name",
+            "recipientPhone": "recipient_phone",
+            "buildingNumber": "building_number",
+            "postalCode": "postal_code",
+            "isDefault": "is_default",
+        }
+        for camel, snake in mappings.items():
+            if camel in data and snake not in data:
+                data[snake] = data[camel]
+        return super().to_internal_value(data)
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret["recipientName"] = instance.recipient_name
+        ret["recipientPhone"] = instance.recipient_phone
+        ret["buildingNumber"] = instance.building_number
+        ret["postalCode"] = instance.postal_code
+        ret["isDefault"] = instance.is_default
+        return ret
+
+    def validate_recipient_phone(self, value):
+        digits = "".join(c for c in str(value) if c.isdigit())
+        if digits.startswith("98") and len(digits) == 12:
+            digits = "0" + digits[2:]
+        elif digits and not digits.startswith("0"):
+            digits = "0" + digits
+        if not re.fullmatch(r"09\d{9}", digits):
+            raise serializers.ValidationError("شماره موبایل تحویل‌گیرنده معتبر نیست (مثال: ۰۹۱۲۱۲۳۴۵۶۷).")
+        return digits
+
+    def validate_postal_code(self, value):
+        if not value:
+            return ""
+        digits = "".join(c for c in str(value) if c.isdigit())
+        if len(digits) != 10:
+            raise serializers.ValidationError("کد پستی باید ۱۰ رقم باشد.")
+        return digits
 
 
 

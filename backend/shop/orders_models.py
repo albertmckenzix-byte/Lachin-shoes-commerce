@@ -132,6 +132,61 @@ class OTPCode(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# 3.8. CustomerAddress (Saved Addresses)
+# ---------------------------------------------------------------------------
+
+class CustomerAddress(models.Model):
+    """
+    Saved delivery addresses for customer accounts.
+    Allows customers to store multiple addresses (e.g. Home, Office)
+    and select them in one click during checkout.
+    """
+    customer = models.ForeignKey(
+        Customer, on_delete=models.CASCADE, related_name="addresses"
+    )
+    title = models.CharField(max_length=50, default="خانه", verbose_name="عنوان آدرس")
+    recipient_name = models.CharField(max_length=150, verbose_name="تحویل‌گیرنده")
+    recipient_phone = models.CharField(max_length=15, verbose_name="شماره تماس تحویل‌گیرنده")
+    province = models.CharField(max_length=100, verbose_name="استان")
+    city = models.CharField(max_length=100, verbose_name="شهر")
+    address = models.TextField(verbose_name="نشانی پستی")
+    building_number = models.CharField(max_length=20, blank=True, default="", verbose_name="پلاک")
+    unit = models.CharField(max_length=20, blank=True, default="", verbose_name="واحد")
+    postal_code = models.CharField(max_length=10, blank=True, default="", verbose_name="کدپستی ۱۰ رقمی")
+    is_default = models.BooleanField(default=False, verbose_name="آدرس پیش‌فرض")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-is_default", "-created_at"]
+        verbose_name = "Customer Address"
+        verbose_name_plural = "Customer Addresses"
+
+    def __str__(self):
+        return f"{self.title}: {self.recipient_name} - {self.city} ({self.customer.phone})"
+
+    def save(self, *args, **kwargs):
+        if self.recipient_phone:
+            digits = ''.join(c for c in self.recipient_phone if c.isdigit())
+            if digits.startswith('98') and len(digits) == 12:
+                digits = '0' + digits[2:]
+            elif digits and not digits.startswith('0'):
+                digits = '0' + digits
+            self.recipient_phone = digits
+
+        if self.postal_code:
+            self.postal_code = ''.join(c for c in self.postal_code if c.isdigit())
+
+        if self.is_default:
+            CustomerAddress.objects.filter(customer=self.customer, is_default=True).exclude(pk=self.pk).update(is_default=False)
+        else:
+            if not self.pk and not CustomerAddress.objects.filter(customer=self.customer).exists():
+                self.is_default = True
+
+        super().save(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
 # 4. Order
 # ---------------------------------------------------------------------------
 

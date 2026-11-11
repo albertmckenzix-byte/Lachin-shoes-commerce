@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Product, ProductImage, ProductSize,
-    StoreSettings, Coupon, Customer,
+    StoreSettings, Coupon, Customer, CustomerAddress,
     Order, OrderItem, OrderStatusLog,
 )
 
@@ -76,8 +76,18 @@ class CouponAdmin(admin.ModelAdmin):
 
 
 # ---------------------------------------------------------------------------
-# Customer
+# Customer & Saved Addresses
 # ---------------------------------------------------------------------------
+
+class CustomerAddressInline(admin.StackedInline):
+    model = CustomerAddress
+    extra = 0
+    fields = (
+        'title', 'recipient_name', 'recipient_phone',
+        'province', 'city', 'address', 'building_number', 'unit',
+        'postal_code', 'is_default'
+    )
+
 
 @admin.register(Customer)
 class CustomerAdmin(admin.ModelAdmin):
@@ -85,6 +95,17 @@ class CustomerAdmin(admin.ModelAdmin):
     search_fields = ('phone', 'first_name', 'last_name', 'email')
     list_filter = ('city',)
     readonly_fields = ('created_at',)
+    inlines = [CustomerAddressInline]
+
+
+@admin.register(CustomerAddress)
+class CustomerAddressAdmin(admin.ModelAdmin):
+    list_display = (
+        'title', 'customer', 'recipient_name', 'recipient_phone',
+        'province', 'city', 'is_default', 'created_at'
+    )
+    search_fields = ('title', 'customer__phone', 'recipient_name', 'recipient_phone', 'city', 'address')
+    list_filter = ('province', 'is_default', 'created_at')
 
 
 # ---------------------------------------------------------------------------
