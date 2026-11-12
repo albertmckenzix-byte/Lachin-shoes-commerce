@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react'
 import { fetchFavorites, toggleFavoriteApi, syncFavoritesApi } from '../api/favorites'
-import { useCustomerAuth } from './CustomerAuthContext'
+import { CustomerAuthContext } from './CustomerAuthContext'
 
 const WishlistContext = createContext(null)
 
@@ -30,12 +30,7 @@ function saveFavorites(items) {
 }
 
 export function WishlistProvider({ children }) {
-  let auth = null
-  try {
-    auth = useCustomerAuth()
-  } catch {
-    // Graceful fallback if rendered outside CustomerAuthProvider (e.g. unit tests)
-  }
+  const auth = useContext(CustomerAuthContext)
   const token = auth?.token
 
   const [favorites, setFavorites] = useState(loadFavorites)
@@ -220,3 +215,4 @@ export function useWishlist() {
   }
   return context
 }
+

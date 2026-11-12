@@ -10,8 +10,8 @@ export default function BestSellers() {
 
   if (loading && products.length === 0) {
     return (
-      <section className="relative z-10 bg-white pt-12 pb-[60px] px-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <section className="relative z-10 bg-white pt-12 pb-[60px] px-4 sm:px-6">
+        <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="animate-pulse">
               <div className="aspect-[3/4] rounded-[6px] bg-[#ECECEC]" />
@@ -25,7 +25,7 @@ export default function BestSellers() {
   }
 
   return (
-    <section className="relative z-10 bg-white pt-12 pb-[60px] px-6">
+    <section className="relative z-10 bg-white pt-12 pb-[60px] px-4 sm:px-6">
       <div className="flex justify-between items-center mb-8">
         <h2 className="text-[20px] uppercase font-normal tracking-[0.01em] text-black">
           {t('bestSellers.title')}
@@ -37,7 +37,7 @@ export default function BestSellers() {
           {t('bestSellers.viewAll')}
         </Link>
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
         {bestSellers.map((product) => (
           <ProductCard key={product.id} product={product} />
         ))}

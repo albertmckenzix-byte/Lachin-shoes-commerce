@@ -5,7 +5,7 @@ import { formatPrice } from '../../utils/format'
 import { EXPRESS_SHIPPING_FEE } from '../../config'
 import { checkCoupon } from '../../api/orders'
 
-export default function OrderSummary({ subtotal, selectedDelivery, discount, promoCode, setPromoCode, setDiscount }) {
+export default function OrderSummary({ subtotal, selectedDelivery, discount, promoCode, setPromoCode, setDiscount, idPrefix = 'desktop' }) {
   const { t } = useTranslation()
   const [promoError, setPromoError] = useState(false)
   const [checkingPromo, setCheckingPromo] = useState(false)
@@ -14,6 +14,8 @@ export default function OrderSummary({ subtotal, selectedDelivery, discount, pro
   const shippingText = selectedDelivery === 'express' ? formatPrice(EXPRESS_SHIPPING_FEE) : t('checkout.free')
   const discountAmount = discount || 0
   const total = subtotal + shippingCost - discountAmount
+  const promoInputId = `${idPrefix}-promoCode`
+  const promoErrorId = `${idPrefix}-promo-error`
 
   const handleApplyPromo = async () => {
     const code = promoCode.trim().toUpperCase()
@@ -47,9 +49,9 @@ export default function OrderSummary({ subtotal, selectedDelivery, discount, pro
     <div className="mt-[28px] space-y-4" role="region" aria-label={t('checkout.total')}>
       <div className="border-b border-[#BDBDBD] pb-4">
         <div className="flex items-center gap-2">
-          <label htmlFor="promoCode" className="sr-only">{t('checkout.promocode')}</label>
+          <label htmlFor={promoInputId} className="sr-only">{t('checkout.promocode')}</label>
           <input
-            id="promoCode"
+            id={promoInputId}
             type="text"
             placeholder={t('checkout.promocode')}
             value={promoCode}
@@ -60,7 +62,7 @@ export default function OrderSummary({ subtotal, selectedDelivery, discount, pro
             className="flex-1 h-[40px] bg-transparent border-0 border-b-[1px] border-[#BDBDBD] text-[13px] text-black placeholder-[#8a8a8a] focus:border-black focus:outline-none"
             dir="ltr"
             style={{ textAlign: 'start' }}
-            aria-describedby={promoError ? 'promo-error' : undefined}
+            aria-describedby={promoError ? promoErrorId : undefined}
             aria-invalid={promoError ? 'true' : 'false'}
           />
           <button
@@ -72,7 +74,7 @@ export default function OrderSummary({ subtotal, selectedDelivery, discount, pro
             {checkingPromo ? '...' : t('checkout.apply')}
           </button>
         </div>
-        {promoError && <p id="promo-error" className="mt-2 text-[11px] text-red-600" role="alert">{t('checkout.invalidPromocode')}</p>}
+        {promoError && <p id={promoErrorId} className="mt-2 text-[11px] text-red-600" role="alert">{t('checkout.invalidPromocode')}</p>}
       </div>
 
       <div className="border-b border-[#BDBDBD] pb-4 space-y-3">

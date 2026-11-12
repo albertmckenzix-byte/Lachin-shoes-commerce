@@ -38,14 +38,14 @@ export default function ProductCard({ product, variant = 'default' }) {
   const defaultClasses = 'text-[11px] py-[6px]'
 
   return (
-    <div className="group block">
-      <Link to={`/product/${slug}`} className="block">
+    <div className="group block w-full min-w-0">
+      <Link to={`/product/${slug}`} className="block w-full min-w-0">
         <div className="relative aspect-[3/4] overflow-hidden rounded-[6px] bg-gradient-to-b from-[#E9E9E9] to-[#F4F4F2]">
           {imageUrl ? (
             <img
               src={imageUrl}
               alt={displayName}
-              className="w-full h-full object-contain p-4 mix-blend-multiply transition-transform duration-500 ease group-hover:scale-105"
+              className="w-full h-full object-contain p-2 sm:p-4 mix-blend-multiply transition-transform duration-500 ease group-hover:scale-105"
             />
           ) : (
             <div className="w-full h-full bg-gradient-to-b from-[#E9E9E9] to-[#F4F4F2]" />
@@ -72,7 +72,7 @@ export default function ProductCard({ product, variant = 'default' }) {
             />
           </button>
         </div>
-        <h3 className={isListing ? 'mt-[14px] text-[11px] font-semibold uppercase tracking-[0.01em] text-black' : 'mt-[14px] text-[12px] font-semibold uppercase tracking-[0.01em] text-black'}>
+        <h3 className={isListing ? 'mt-[14px] text-[11px] font-semibold uppercase tracking-[0.01em] text-black truncate' : 'mt-[14px] text-[12px] font-semibold uppercase tracking-[0.01em] text-black truncate'}>
           {displayName}
         </h3>
       </Link>
@@ -85,7 +85,7 @@ export default function ProductCard({ product, variant = 'default' }) {
         )}
       </div>
       <button
-        className={`mt-[8px] pill ${isListing ? listingClasses : defaultClasses}`}
+        className={`mt-[8px] pill w-full sm:w-auto ${isListing ? listingClasses : defaultClasses}`}
         onClick={handleAddToCart}
       >
         {added ? t('products.added') : t('products.addToCart')}

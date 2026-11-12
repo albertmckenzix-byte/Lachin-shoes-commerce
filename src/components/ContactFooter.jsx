@@ -442,13 +442,13 @@ const handleChange = (field, value) => {
 
       <style jsx>{`
         @media (max-width: 899px) {
-          .grid {
+          .contact-grid {
             display: flex !important;
             flex-direction: column !important;
             min-height: auto !important;
             padding-top: 0 !important;
           }
-          .grid > div {
+          .contact-grid > div {
             margin-top: 28px !important;
             grid-column: auto !important;
             grid-row: auto !important;
@@ -456,22 +456,22 @@ const handleChange = (field, value) => {
             max-width: none !important;
             width: 100% !important;
           }
-          .grid > div:first-child {
+          .contact-grid > div:first-child {
             margin-top: 0 !important;
           }
-          .grid > div:nth-child(2) {
+          .contact-grid > div:nth-child(2) {
             margin-top: 28px !important;
           }
-          .grid > div:nth-child(3) {
+          .contact-grid > div:nth-child(3) {
             margin-top: 28px !important;
           }
-          .grid > div:nth-child(4) {
+          .contact-grid > div:nth-child(4) {
             margin-top: 28px !important;
           }
-          .grid > div:nth-child(5) {
+          .contact-grid > div:nth-child(5) {
             margin-top: 28px !important;
           }
-          .grid > div:nth-child(6) {
+          .contact-grid > div:nth-child(6) {
             margin-top: 28px !important;
           }
           .contact-map-block > div:nth-child(2) {

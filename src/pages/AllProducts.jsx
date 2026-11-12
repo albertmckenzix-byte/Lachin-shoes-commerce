@@ -4,7 +4,6 @@ import { ChevronRight, Minus, ChevronDown, Check, Plus } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
 import { brands } from '../data/brands'
 import ProductCard from '../components/ProductCard'
-import { AnimatePresence, motion } from 'framer-motion'
 import { formatNumber } from '../utils/format'
 import { searchProducts } from '../utils/search'
 import { useTranslation } from 'react-i18next'
@@ -672,16 +671,8 @@ export default function AllProducts() {
             </div>
           </div>
 
-          {/* Product Grid with animation */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={JSON.stringify(sortedProducts.map(p => p.id).join(',') + sortBy)}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-[10px] gap-y-[20px]"
-            >
+          {/* Product Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 gap-y-6">
               {loading && products.length === 0
                 ? Array.from({ length: 8 }).map((_, i) => (
                     <div key={i} className="animate-pulse">
@@ -694,14 +685,7 @@ export default function AllProducts() {
                 <ProductCard key={product.id} product={product} variant="listing" />
               ))}
               {!loading && sortedProducts.length === 0 && (
-                <motion.div
-                  key="empty"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15 }}
-                  className="col-span-full text-center py-12"
-                >
+                <div className="col-span-full text-center py-12">
                   <p className="text-black text-[14px] font-normal mb-4">
                     {showBrandEmptyMessage ? t('filters.noBrandProducts') : t('allProducts.noProducts')}
                   </p>
@@ -711,10 +695,9 @@ export default function AllProducts() {
                   >
                     {t('allProducts.clearFilters')}
                   </button>
-                </motion.div>
+                </div>
               )}
-            </motion.div>
-          </AnimatePresence>
+          </div>
         </div>
       </div>
     </div>

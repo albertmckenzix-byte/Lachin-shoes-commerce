@@ -9,7 +9,7 @@ import {
   logoutCustomer,
 } from '../api/auth'
 
-const CustomerAuthContext = createContext(null)
+export const CustomerAuthContext = createContext(null)
 
 const TOKEN_KEY = 'lachin_customer_token'
 const USER_KEY = 'lachin_customer_data'

@@ -18,7 +18,7 @@ export default function Hero() {
       />
       <div className="absolute inset-0 z-[1] bg-gradient-to-r from-black/50 via-black/10 to-transparent rtl:bg-gradient-to-l pointer-events-none" />
 
-      <div className="absolute inset-y-0 start-0 z-10 flex flex-col justify-center items-start text-start ps-5">
+      <div className="absolute inset-x-0 top-0 bottom-[130px] md:bottom-0 md:inset-y-0 start-0 z-10 flex flex-col justify-center items-start text-start ps-5 pe-5 md:pe-0">
         <div className="flex flex-col items-start gap-[14px] text-white w-full">
           <h1
             className="font-extrabold leading-[1.3]"
@@ -41,13 +41,8 @@ export default function Hero() {
         </div>
       </div>
 
-      {/* Desktop: absolute bottom-right card */}
-      <div className="hidden md:flex absolute end-[110px] bottom-[66px] z-40">
-        <FeaturedProductCard variant="light" />
-      </div>
-
-      {/* Mobile: static full-width card below content */}
-      <div className="md:hidden ps-5 pe-5 mt-[30px] pb-[20px] relative z-40">
+      {/* Floating Featured Product Card */}
+      <div className="absolute start-4 end-4 bottom-4 md:start-auto md:end-[110px] md:bottom-[66px] z-40 flex justify-center md:block">
         <FeaturedProductCard variant="light" />
       </div>
     </section>

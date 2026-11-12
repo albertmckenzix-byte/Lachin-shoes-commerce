@@ -114,6 +114,16 @@ export default function AdminLayout() {
         </div>
         <div className={menuOpen ? 'block' : 'hidden min-[900px]:block'}>
           <NavItems onNavigate={() => setMenuOpen(false)} />
+          <div className="mt-4 flex items-center justify-between border-t border-white/10 px-1 pt-4 min-[900px]:hidden">
+            <span className="truncate text-sm text-[#C9C9C9]">{username}</span>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="text-sm text-[#C9C9C9] hover:text-white"
+            >
+              خروج
+            </button>
+          </div>
         </div>
         <div className="mt-auto hidden items-center justify-between border-t border-white/10 px-1 pt-4 min-[900px]:flex">
           <span className="truncate text-sm text-[#C9C9C9]">{username}</span>
@@ -126,7 +136,7 @@ export default function AdminLayout() {
           </button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-9 py-7">
+      <main className="min-w-0 flex-1 px-4 py-5 sm:px-9 sm:py-7">
         <Outlet />
       </main>
     </div>

@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
-import { AlertCircle, Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2, ShoppingBag as ShoppingBagIcon, ChevronDown } from 'lucide-react'
 import { useCart } from '../contexts/CartContext'
 import { useProducts } from '../context/ProductsContext'
 import InformationForm from '../components/checkout/InformationForm'
 import DeliveryOptions from '../components/checkout/DeliveryOptions'
 import PaymentOptions from '../components/checkout/PaymentOptions'
 import ShoppingBag from '../components/checkout/ShoppingBag'
-import { formatPrice } from '../utils/format'
+import { formatPrice, formatNumber } from '../utils/format'
 import { EXPRESS_SHIPPING_FEE } from '../config'
 import { createOrder, requestPayment } from '../api/orders'
 
@@ -38,6 +38,7 @@ export default function Checkout() {
   const [discount, setDiscount] = useState(0)
   const [serverError, setServerError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showMobileBag, setShowMobileBag] = useState(false)
 
   const shippingCost = selectedDelivery === 'express' ? EXPRESS_SHIPPING_FEE : 0
   const discountAmount = discount || 0
@@ -153,6 +154,53 @@ export default function Checkout() {
         <div className="grid grid-cols-1 lg:grid-cols-[1.35fr_1fr] gap-[60px] items-start">
           {/* Form Column - Right side in RTL (order-1 on lg) */}
           <div className="lg:order-1">
+            {/* Mobile Order Summary & Coupon Accordion */}
+            <div className="lg:hidden mb-6 rounded-xl border border-[#E5E5E5] bg-[#FAFAF9] overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowMobileBag((v) => !v)}
+                className="w-full flex items-center justify-between p-4 text-start transition-colors hover:bg-[#F2F2F0]"
+                aria-expanded={showMobileBag}
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full bg-black/5 flex items-center justify-center shrink-0">
+                    <ShoppingBagIcon className="w-4 h-4 text-black" />
+                  </div>
+                  <div>
+                    <span className="text-[13px] font-bold text-black block">
+                      {showMobileBag ? 'بستن خلاصه سفارش و کد تخفیف' : 'مشاهده خلاصه سفارش و کد تخفیف'}
+                    </span>
+                    <span className="text-[11px] text-gray-500 block mt-0.5">
+                      {formatNumber(count)} کالا{discount > 0 ? ` · تخفیف: -${formatPrice(discount)}` : ''}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[14px] font-bold text-black">{formatPrice(total)}</span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${
+                      showMobileBag ? 'rotate-180' : ''
+                    }`}
+                  />
+                </div>
+              </button>
+
+              {showMobileBag && (
+                <div className="px-4 pb-4 pt-1 border-t border-[#EAEAEA] bg-white">
+                  <ShoppingBag
+                    promoCode={promoCode}
+                    setPromoCode={setPromoCode}
+                    discount={discount}
+                    setDiscount={setDiscount}
+                    selectedDelivery={selectedDelivery}
+                    total={total}
+                    isPayDisabled={isPayDisabled}
+                    hideTitle
+                    idPrefix="mobile"
+                  />
+                </div>
+              )}
+            </div>
             <InformationForm
               formData={formData}
               setFormData={setFormData}
@@ -188,6 +236,7 @@ export default function Checkout() {
               selectedDelivery={selectedDelivery}
               total={total}
               isPayDisabled={isPayDisabled}
+              idPrefix="desktop"
             />
           </div>
         </div>
@@ -222,3 +271,4 @@ export default function Checkout() {
     </div>
   )
 }
+

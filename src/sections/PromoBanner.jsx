@@ -44,13 +44,8 @@ export default function PromoBanner() {
           <button className="pill-solid w-fit whitespace-nowrap px-[16px] py-[6px] mt-[14px]">{t('hero.shopNow')}</button>
         </div>
 
-        {/* Desktop: absolute bottom-left card */}
-        <div className="hidden md:block absolute end-[110px] bottom-[56px] z-40">
-          <FeaturedProductCard product={classicComfort} variant="light" />
-        </div>
-
-        {/* Mobile: static full-width card below content */}
-        <div className="md:hidden ps-5 pe-5 mt-[300px] pb-[20px] relative z-40">
+        {/* Floating Featured Product Card */}
+        <div className="absolute start-4 end-4 bottom-4 md:start-auto md:end-[110px] md:bottom-[56px] z-40 flex justify-center md:block">
           <FeaturedProductCard product={classicComfort} variant="light" />
         </div>
       </section>

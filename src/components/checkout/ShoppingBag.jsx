@@ -6,7 +6,7 @@ import { Link } from 'react-router-dom'
 import OrderSummary from './OrderSummary'
 import { getProductImage } from '../../utils/productImages'
 
-export default function ShoppingBag({ promoCode, setPromoCode, discount, setDiscount, selectedDelivery, total, isPayDisabled }) {
+export default function ShoppingBag({ promoCode, setPromoCode, discount, setDiscount, selectedDelivery, total, isPayDisabled, hideTitle = false, idPrefix }) {
   const { t } = useTranslation()
   const { items, count, subtotal, removeItem, updateQuantity } = useCart()
   const { products } = useProducts()
@@ -29,9 +29,11 @@ export default function ShoppingBag({ promoCode, setPromoCode, discount, setDisc
   return (
     <div className="lg:sticky lg:top-24">
       <div className="bg-white">
-        <h2 className="text-[24px] font-normal text-black leading-[1.3] mb-6">
+        {!hideTitle && (
+          <h2 className="text-[24px] font-normal text-black leading-[1.3] mb-6">
           {t('checkout.shoppingBag')} ({formatNumber(count)})
         </h2>
+        )}
 
         <div className="space-y-0">
           {items.map((item, index) => {
@@ -114,6 +116,7 @@ export default function ShoppingBag({ promoCode, setPromoCode, discount, setDisc
           promoCode={promoCode}
           setPromoCode={setPromoCode}
           setDiscount={setDiscount}
+          idPrefix={idPrefix || (hideTitle ? 'mobile' : 'desktop')}
         />
       </div>
     </div>
