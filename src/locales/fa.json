@@ -233,6 +233,10 @@
     "searchResults": "نتایج جستجو برای «{{term}}»",
     "clearSearch": "پاک کردن جستجو",
     "filterAndBrowse": "فیلتر و مرور",
+    "filter": "فیلتر",
+    "filterDrawerTitle": "فیلتر محصولات",
+    "apply": "تأیید",
+    "confirm": "تأیید",
     "breadcrumb": "خرده‌نقش",
     "categoriesLabel": "دسته‌ها"
   },

@@ -1,13 +1,14 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { ChevronRight, Minus, ChevronDown, Check, Plus } from 'lucide-react'
+import { ChevronRight, ChevronDown, SlidersHorizontal } from 'lucide-react'
 import { useProducts } from '../context/ProductsContext'
 import { brands } from '../data/brands'
 import ProductCard from '../components/ProductCard'
+import FilterPanel from '../components/FilterPanel'
+import FilterDrawer from '../components/FilterDrawer'
 import { formatNumber } from '../utils/format'
 import { searchProducts } from '../utils/search'
 import { useTranslation } from 'react-i18next'
-import { formatPrice } from '../utils/format'
 import { toPersianDigits } from '../utils/toPersianDigits'
 
 const CATEGORIES = [
@@ -27,7 +28,6 @@ const SORT_OPTIONS = [
 
 const FALLBACK_MIN_PRICE = 8500000
 const FALLBACK_MAX_PRICE = 21000000
-const PRICE_STEP = 100000
 
 function getCategoryLabelKey(key) {
   const cat = CATEGORIES.find(c => c.key === key)
@@ -37,10 +37,8 @@ function getCategoryLabelKey(key) {
 export default function AllProducts() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [showSortDropdown, setShowSortDropdown] = useState(false)
-  const [showMobileSidebar, setShowMobileSidebar] = useState(false)
-  const [priceExpanded, setPriceExpanded] = useState(true)
-  const [genderExpanded, setGenderExpanded] = useState(true)
-  const [brandExpanded, setBrandExpanded] = useState(true)
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false)
+  const filterButtonRef = useRef(null)
   const { t } = useTranslation()
   const { products, loading } = useProducts()
 
@@ -60,37 +58,85 @@ export default function AllProducts() {
   const searchQuery = searchParams.get('search') || ''
   const gender = searchParams.get('gender') || ''
   const brandParam = searchParams.get('brand') || ''
-  const selectedBrands = brandParam ? brandParam.split(',') : []
+  const selectedBrands = useMemo(() => (brandParam ? brandParam.split(',') : []), [brandParam])
   const priceMin = searchParams.get('priceMin')
   const priceMax = searchParams.get('priceMax')
-  const initialPriceRange = useMemo(() => [
+  const priceRange = useMemo(() => [
     priceMin ? Math.max(MIN_PRICE, parseInt(priceMin, 10)) : MIN_PRICE,
     priceMax ? Math.min(MAX_PRICE, parseInt(priceMax, 10)) : MAX_PRICE,
-  ], [priceMin, priceMax])
+  ], [priceMin, priceMax, MIN_PRICE, MAX_PRICE])
 
-  const [priceRange, setPriceRange] = useState(initialPriceRange)
+  const currentFilterValues = useMemo(() => ({
+    category,
+    gender,
+    brands: selectedBrands,
+    priceMin: priceRange[0],
+    priceMax: priceRange[1],
+  }), [category, gender, selectedBrands, priceRange])
 
-  useEffect(() => {
+  const activeFiltersCount =
+    (gender ? 1 : 0) +
+    selectedBrands.length +
+    (category !== 'all' ? 1 : 0) +
+    (priceRange[0] > MIN_PRICE || priceRange[1] < MAX_PRICE ? 1 : 0)
+
+  const handleFilterChange = (nextValues) => {
     const params = new URLSearchParams(searchParams)
-    let changed = false
-    if (priceRange[0] > MIN_PRICE) {
-      params.set('priceMin', priceRange[0].toString())
-      changed = true
+
+    if (nextValues.category && nextValues.category !== 'all') {
+      params.set('category', nextValues.category)
+    } else {
+      params.delete('category')
+    }
+
+    if (nextValues.gender) {
+      params.set('gender', nextValues.gender)
+    } else {
+      params.delete('gender')
+    }
+
+    if (Array.isArray(nextValues.brands) && nextValues.brands.length > 0) {
+      params.set('brand', nextValues.brands.join(','))
+    } else {
+      params.delete('brand')
+    }
+
+    const nextMin = typeof nextValues.priceMin === 'number' ? nextValues.priceMin : MIN_PRICE
+    const nextMax = typeof nextValues.priceMax === 'number' ? nextValues.priceMax : MAX_PRICE
+    if (nextMin > MIN_PRICE) {
+      params.set('priceMin', nextMin.toString())
     } else {
       params.delete('priceMin')
-      changed = true
     }
-    if (priceRange[1] < MAX_PRICE) {
-      params.set('priceMax', priceRange[1].toString())
-      changed = true
+    if (nextMax < MAX_PRICE) {
+      params.set('priceMax', nextMax.toString())
     } else {
       params.delete('priceMax')
-      changed = true
     }
-    if (changed) {
-      setSearchParams(params, { replace: true })
+
+    setSearchParams(params, { replace: true })
+  }
+
+  const computeDraftCount = (draft) => {
+    const cat = draft?.category || 'all'
+    const gen = draft?.gender || ''
+    const brs = draft?.brands || []
+    const pMin = typeof draft?.priceMin === 'number' ? draft.priceMin : MIN_PRICE
+    const pMax = typeof draft?.priceMax === 'number' ? draft.priceMax : MAX_PRICE
+
+    let result = products.filter((p) => {
+      if (cat !== 'all' && !p.categories.includes(cat)) return false
+      if (p.price < pMin || p.price > pMax) return false
+      if (gen && !p.genders.includes(gen)) return false
+      if (brs.length > 0 && !brs.includes(p.makerBrand)) return false
+      return true
+    })
+
+    if (searchQuery) {
+      result = searchProducts(result, searchQuery, t)
     }
-  }, [priceRange, searchParams, setSearchParams])
+    return result.length
+  }
 
   const handleSortChange = (value) => {
     const params = new URLSearchParams(searchParams)
@@ -101,10 +147,6 @@ export default function AllProducts() {
     }
     setSearchParams(params)
     setShowSortDropdown(false)
-  }
-
-  const handlePriceChange = (min, max) => {
-    setPriceRange([min, max])
   }
 
   const handleGenderToggle = (value) => {
@@ -139,7 +181,6 @@ export default function AllProducts() {
       params.set('sort', sortBy)
     }
     setSearchParams(params)
-    setPriceRange([MIN_PRICE, MAX_PRICE])
   }
 
   const handleClearSearch = () => {
@@ -161,7 +202,7 @@ export default function AllProducts() {
       result = searchProducts(result, searchQuery, t)
     }
     return result
-  }, [category, priceRange, gender, selectedBrands, searchQuery, t])
+  }, [category, priceRange, gender, selectedBrands, searchQuery, t, products])
 
   const brandCounts = useMemo(() => {
     const counts = {}
@@ -175,7 +216,7 @@ export default function AllProducts() {
       }
     })
     return counts
-  }, [gender, category, priceRange])
+  }, [gender, category, priceRange, products])
 
   const showBrandEmptyMessage =
     selectedBrands.length > 0 &&
@@ -208,12 +249,12 @@ export default function AllProducts() {
     <div className="min-h-screen bg-white pb-20" dir="rtl">
       {/* Breadcrumb & Title */}
       <div className="px-[16px] pt-[40px]">
-        <nav className="flex items-center gap-[16px] text-[12px] text-black" aria-label={t('allProducts.breadcrumb')}>
+        <nav className="flex items-center gap-[16px] text-[13px] text-black" aria-label={t('allProducts.breadcrumb')}>
           <Link to="/" className="hover:underline">{t('allProducts.breadcrumbHome')}</Link>
           <ChevronRight size={14} strokeWidth={2} className="text-black flex-shrink-0 rtl:rotate-180" />
           <span className="text-black">{showCategoryInTitle ? t(categoryLabelKey) : t('allProducts.title')}</span>
         </nav>
-        <h1 className="mt-[22px] text-[18px] font-normal text-black">
+        <h1 className="mt-[22px] text-[22px] font-medium text-black">
           {showCategoryInTitle ? t(categoryLabelKey) : t('allProducts.title')}
         </h1>
       </div>
@@ -233,365 +274,20 @@ export default function AllProducts() {
         </div>
       )}
 
-      <div className="grid px-[16px] mt-[55px] gap-y-8 max-w-[1600px] mx-auto lg:grid-cols-[200px_1fr] lg:gap-x-16">
+      <div className="grid px-[16px] mt-[55px] gap-y-8 max-w-[1600px] mx-auto lg:grid-cols-[220px_1fr] lg:gap-x-16">
         {/* Sidebar - Desktop */}
-        <aside className="hidden lg:block lg:w-[200px] shrink-0 lg:sticky lg:top-6 lg:self-start ps-1">
-          {/* Browse by */}
-          <div className="mb-[45px]">
-            <div className="border-b border-[#BDBDBD] pb-[14px]">
-              <h2 className="text-[14px] font-normal text-black text-start">{t('allProducts.browseBy')}</h2>
-            </div>
-            <nav className="mt-[14px] flex flex-col gap-[12px]" aria-label={t('allProducts.categoriesLabel')}>
-              {CATEGORIES.map((cat) => (
-                <Link
-                  key={cat.key}
-                  to={cat.key === 'all' ? '/all-products' : `/all-products?category=${cat.key}`}
-                  className={`text-[11px] font-semibold text-black hover:underline ${
-                    category === cat.key ? 'underline' : 'text-[#333]'
-                  } text-start`}
-                >
-                  {t(cat.labelKey)}
-                </Link>
-              ))}
-            </nav>
-          </div>
-
-          {/* Filter by */}
-          <div>
-            <div className="border-b border-[#BDBDBD] pb-[14px]">
-              <h2 className="text-[14px] font-normal text-black text-start">{t('allProducts.filterBy')}</h2>
-            </div>
-
-            {/* Gender section */}
-            <div className="mt-[14px]">
-              <button
-                type="button"
-                onClick={() => setGenderExpanded(!genderExpanded)}
-                className="flex items-center justify-between w-full text-start"
-                aria-expanded={genderExpanded}
-              >
-                <span className="text-[11px] font-semibold text-black">{t('filters.gender')}</span>
-                {genderExpanded
-                  ? <Minus size={14} strokeWidth={2} className="text-black flex-shrink-0" />
-                  : <Plus size={14} strokeWidth={2} className="text-black flex-shrink-0" />}
-              </button>
-              <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${genderExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                <div className="overflow-hidden">
-                  <div className="mt-[10px] flex flex-col gap-[6px]">
-                    {['men', 'women'].map((g) => (
-                      <label key={g} className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          className="hidden"
-                          checked={gender === g}
-                          onChange={() => handleGenderToggle(g)}
-                        />
-                        <span className={`w-[14px] h-[14px] flex items-center justify-center border border-black ${gender === g ? 'bg-black' : 'bg-white'}`}>
-                          {gender === g && <Check size={10} strokeWidth={2} className="text-white" />}
-                        </span>
-                        <span className="text-[13px] text-black">{t(`filters.${g}`)}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Brand section */}
-            <div className="mt-[14px]">
-              <button
-                type="button"
-                onClick={() => setBrandExpanded(!brandExpanded)}
-                className="flex items-center justify-between w-full text-start"
-                aria-expanded={brandExpanded}
-              >
-                <span className="text-[11px] font-semibold text-black">{t('filters.brand')}</span>
-                {brandExpanded
-                  ? <Minus size={14} strokeWidth={2} className="text-black flex-shrink-0" />
-                  : <Plus size={14} strokeWidth={2} className="text-black flex-shrink-0" />}
-              </button>
-              <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${brandExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                <div className="overflow-hidden">
-                  <div className="mt-[10px] flex flex-col gap-[6px]">
-                    {brands.map((b) => {
-                      const checked = selectedBrands.includes(b.key)
-                      const count = brandCounts[b.key] || 0
-                      return (
-                        <label key={b.key} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="hidden"
-                            checked={checked}
-                            onChange={() => handleBrandToggle(b.key)}
-                          />
-                          <span className={`w-[14px] h-[14px] flex items-center justify-center border border-black ${checked ? 'bg-black' : 'bg-white'}`}>
-                            {checked && <Check size={10} strokeWidth={2} className="text-white" />}
-                          </span>
-                          <span className={`text-[13px] ${count === 0 ? 'text-gray-400' : 'text-black'}`}>{t(`brands.${b.key}`)} ({toPersianDigits(count)})</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Price section */}
-            <div className="mt-[14px]">
-              <button
-                type="button"
-                onClick={() => setPriceExpanded(!priceExpanded)}
-                className="flex items-center justify-between w-full text-start"
-                aria-expanded={priceExpanded}
-              >
-                <span className="text-[11px] font-semibold text-black">{t('allProducts.price')}</span>
-                <Minus size={14} strokeWidth={2} className="text-black flex-shrink-0" />
-              </button>
-
-              {priceExpanded && (
-                <div className="mt-4" dir="rtl">
-                  {/* Dual-handle range slider */}
-                  <div className="relative w-full h-4">
-                    <div
-                      className="absolute inset-0 h-[1px] bg-black pointer-events-none"
-                      style={{ top: '50%', transform: 'translateY(-50%)' }}
-                    />
-                    <div
-                      className="absolute w-[14px] h-[14px] rounded-full bg-black border-2 border-white shadow-sm pointer-events-none"
-                      style={{
-                        right: `calc(${(priceRange[0] - MIN_PRICE) / (MAX_PRICE - MIN_PRICE) * 100}%)`,
-                        top: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        zIndex: 20,
-                      }}
-                    />
-                    <div
-                      className="absolute w-[14px] h-[14px] rounded-full bg-black border-2 border-white shadow-sm pointer-events-none"
-                      style={{
-                        right: `calc(${(priceRange[1] - MIN_PRICE) / (MAX_PRICE - MIN_PRICE) * 100}%)`,
-                        top: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        zIndex: 20,
-                      }}
-                    />
-                    <div className="absolute inset-0 pointer-events-auto">
-                      <input
-                        type="range"
-                        min={MIN_PRICE}
-                        max={MAX_PRICE}
-                        step={PRICE_STEP}
-                        value={priceRange[0]}
-                        onChange={(e) => handlePriceChange(Number(e.target.value), priceRange[1])}
-                        className="absolute w-full h-full cursor-pointer z-20"
-                        style={{
-                          appearance: 'none',
-                          background: 'transparent',
-                          WebkitAppearance: 'none',
-                        }}
-                        aria-label={t('filters.minPrice')}
-                      />
-                      <input
-                        type="range"
-                        min={MIN_PRICE}
-                        max={MAX_PRICE}
-                        step={PRICE_STEP}
-                        value={priceRange[1]}
-                        onChange={(e) => handlePriceChange(priceRange[0], Number(e.target.value))}
-                        className="absolute w-full h-full cursor-pointer z-20"
-                        style={{
-                          appearance: 'none',
-                          background: 'transparent',
-                          WebkitAppearance: 'none',
-                        }}
-                        aria-label={t('filters.maxPrice')}
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-4 flex flex-col gap-1 text-[11px] font-semibold text-black whitespace-nowrap text-start">
-                    <span>{t('filters.from')} {formatPrice(priceRange[0])}</span>
-                    <span>{t('filters.to')} {formatPrice(priceRange[1])}</span>
-                  </div>
-                </div>
-               )}
-              
-               <div className="mt-[14px] border-t border-[#BDBDBD]" />
-            </div>
-          </div>
+        <aside className="hidden lg:block lg:w-[220px] shrink-0 lg:sticky lg:top-6 lg:self-start ps-1">
+          <FilterPanel
+            variant="sidebar"
+            values={currentFilterValues}
+            onChange={handleFilterChange}
+            brandCounts={brandCounts}
+            priceBounds={{ min: MIN_PRICE, max: MAX_PRICE }}
+          />
         </aside>
 
         {/* Product Area */}
         <div className="flex-1 min-w-0">
-          {/* Mobile sidebar toggle */}
-          <button
-            className="lg:hidden w-full flex items-center justify-between py-3 border-b border-[#BDBDBD] text-start"
-            onClick={() => setShowMobileSidebar(!showMobileSidebar)}
-            aria-expanded={showMobileSidebar}
-          >
-            <span className="text-[14px] font-normal text-black">{t('allProducts.filterAndBrowse')}</span>
-            <ChevronDown size={16} strokeWidth={2} className="text-black" />
-          </button>
-
-          {/* Mobile sidebar */}
-          <div className={`lg:hidden transition-all duration-300 overflow-hidden ${showMobileSidebar ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'}`}>
-            <div className="pb-4 border-b border-[#BDBDBD]">
-               <h2 className="text-[14px] font-normal text-black pb-[14px] border-b border-[#BDBDBD] mb-4 text-start">{t('allProducts.browseBy')}</h2>
-               <nav className="flex flex-col gap-[12px]" aria-label={t('allProducts.categoriesLabel')}>
-                 {CATEGORIES.map((cat) => (
-                   <Link
-                     key={cat.key}
-                     to={cat.key === 'all' ? '/all-products' : `/all-products?category=${cat.key}`}
-                     className={`text-[11px] font-semibold text-black hover:underline ${
-                       category === cat.key ? 'underline' : 'text-[#333]'
-                     } text-start`}
-                     onClick={() => setShowMobileSidebar(false)}
-                   >
-                     {t(cat.labelKey)}
-                  </Link>
-                ))}
-              </nav>
-            </div>
-            <div className="mt-4 pb-4 border-b border-[#BDBDBD]">
-               <h2 className="text-[14px] font-normal text-black pb-[14px] border-b border-[#BDBDBD] mb-4 text-start">{t('allProducts.filterBy')}</h2>
-
-              {/* Gender section */}
-              <div className="mt-[14px]">
-                <button
-                  type="button"
-                  onClick={() => setGenderExpanded(!genderExpanded)}
-                  className="flex items-center justify-between w-full text-start mb-4"
-                  aria-expanded={genderExpanded}
-                >
-                  <span className="text-[11px] font-semibold text-black">{t('filters.gender')}</span>
-                  {genderExpanded
-                    ? <Minus size={14} strokeWidth={2} className="text-black flex-shrink-0" />
-                    : <Plus size={14} strokeWidth={2} className="text-black flex-shrink-0" />}
-                </button>
-                <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${genderExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                  <div className="overflow-hidden">
-                    <div className="mt-[10px] flex flex-col gap-[6px]">
-                      {['men', 'women'].map((g) => (
-                        <label key={g} className="flex items-center gap-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            className="hidden"
-                            checked={gender === g}
-                            onChange={() => handleGenderToggle(g)}
-                          />
-                          <span className={`w-[14px] h-[14px] flex items-center justify-center border border-black ${gender === g ? 'bg-black' : 'bg-white'}`}>
-                            {gender === g && <Check size={10} strokeWidth={2} className="text-white" />}
-                          </span>
-                          <span className="text-[13px] text-black">{t(`filters.${g}`)}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Brand section */}
-              <div className="mt-[14px]">
-                <button
-                  type="button"
-                  onClick={() => setBrandExpanded(!brandExpanded)}
-                  className="flex items-center justify-between w-full text-start mb-4"
-                  aria-expanded={brandExpanded}
-                >
-                  <span className="text-[11px] font-semibold text-black">{t('filters.brand')}</span>
-                  {brandExpanded
-                    ? <Minus size={14} strokeWidth={2} className="text-black flex-shrink-0" />
-                    : <Plus size={14} strokeWidth={2} className="text-black flex-shrink-0" />}
-                </button>
-                <div className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${brandExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
-                  <div className="overflow-hidden">
-                    <div className="mt-[10px] flex flex-col gap-[6px]">
-                      {brands.map((b) => {
-                        const checked = selectedBrands.includes(b.key)
-                        const count = brandCounts[b.key] || 0
-                        return (
-                          <label key={b.key} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              className="hidden"
-                              checked={checked}
-                              onChange={() => handleBrandToggle(b.key)}
-                            />
-                            <span className={`w-[14px] h-[14px] flex items-center justify-center border border-black ${checked ? 'bg-black' : 'bg-white'}`}>
-                              {checked && <Check size={10} strokeWidth={2} className="text-white" />}
-                            </span>
-                          <span className={`text-[13px] ${count === 0 ? 'text-gray-400' : 'text-black'}`}>{t(`brands.${b.key}`)} ({toPersianDigits(count)})</span>
-                          </label>
-                        )
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-               <button
-                type="button"
-                onClick={() => setPriceExpanded(!priceExpanded)}
-                className="flex items-center justify-between w-full text-start mb-4"
-                aria-expanded={priceExpanded}
-              >
-                <span className="text-[11px] font-semibold text-black">{t('allProducts.price')}</span>
-                <Minus size={14} strokeWidth={2} className="text-black flex-shrink-0" />
-              </button>
-              {priceExpanded && (
-                <div dir="rtl">
-                  <div className="relative w-full h-4">
-                    <div className="absolute inset-0 h-[1px] bg-black pointer-events-none" style={{ top: '50%', transform: 'translateY(-50%)' }} />
-                    <div
-                      className="absolute w-[14px] h-[14px] rounded-full bg-black border-2 border-white shadow-sm pointer-events-none"
-                      style={{
-                        right: `calc(${(priceRange[0] - MIN_PRICE) / (MAX_PRICE - MIN_PRICE) * 100}%)`,
-                        top: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        zIndex: 20,
-                      }}
-                    />
-                    <div
-                      className="absolute w-[14px] h-[14px] rounded-full bg-black border-2 border-white shadow-sm pointer-events-none"
-                      style={{
-                        right: `calc(${(priceRange[1] - MIN_PRICE) / (MAX_PRICE - MIN_PRICE) * 100}%)`,
-                        top: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        zIndex: 20,
-                      }}
-                    />
-                    <div className="absolute inset-0 pointer-events-auto">
-                      <input
-                        type="range"
-                        min={MIN_PRICE}
-                        max={MAX_PRICE}
-                        step={PRICE_STEP}
-                        value={priceRange[0]}
-                        onChange={(e) => handlePriceChange(Number(e.target.value), priceRange[1])}
-                        className="absolute w-full h-full cursor-pointer z-20"
-                        style={{ appearance: 'none', background: 'transparent', WebkitAppearance: 'none' }}
-                        aria-label={t('filters.minPrice')}
-                      />
-                      <input
-                        type="range"
-                        min={MIN_PRICE}
-                        max={MAX_PRICE}
-                        step={PRICE_STEP}
-                        value={priceRange[1]}
-                        onChange={(e) => handlePriceChange(priceRange[0], Number(e.target.value))}
-                        className="absolute w-full h-full cursor-pointer z-20"
-                        style={{ appearance: 'none', background: 'transparent', WebkitAppearance: 'none' }}
-                        aria-label={t('filters.maxPrice')}
-                      />
-                    </div>
-                  </div>
-                  <div className="mt-4 flex flex-col gap-1 text-[11px] font-semibold text-black whitespace-nowrap text-start">
-                    <span>{t('filters.from')} {formatPrice(priceRange[0])}</span>
-                    <span>{t('filters.to')} {formatPrice(priceRange[1])}</span>
-                  </div>
-                </div>
-               )}
-              </div>
-            </div>
-
           {/* Active filter chips */}
           {(gender || selectedBrands.length > 0) && (
             <div className="mb-[12px] flex flex-wrap items-center gap-[8px] text-[11px]">
@@ -634,25 +330,43 @@ export default function AllProducts() {
             </div>
           )}
 
-          {/* Product area top bar - product count on start side, sort dropdown on end side */}
-          <div className="flex items-center justify-between mt-4 lg:mt-0 mb-[18px]">
-            <span className="text-[11px] font-semibold text-black">
-              {t('allProducts.productCount', { count: formatNumber(sortedProducts.length) })}
-            </span>
+          {/* Product area top bar - Filter button on mobile, product count on start side, sort dropdown on end side */}
+          <div className="flex items-center justify-between gap-3 mt-4 lg:mt-0 mb-[18px]">
+            <div className="flex items-center gap-3">
+              <button
+                ref={filterButtonRef}
+                type="button"
+                onClick={() => setIsFilterDrawerOpen(true)}
+                className="lg:hidden h-[40px] px-4 rounded-full border-[1.5px] border-black text-[13px] font-semibold text-black flex items-center gap-2 hover:bg-gray-50 transition-colors cursor-pointer"
+                aria-haspopup="dialog"
+                aria-expanded={isFilterDrawerOpen}
+              >
+                <SlidersHorizontal size={14} strokeWidth={2} className="text-black" />
+                <span>{t('allProducts.filter', 'فیلتر')}</span>
+                {activeFiltersCount > 0 && (
+                  <span className="w-[18px] h-[18px] rounded-full bg-black text-white text-[10px] font-bold flex items-center justify-center">
+                    {toPersianDigits(activeFiltersCount)}
+                  </span>
+                )}
+              </button>
+              <span className="text-[13.5px] font-medium text-black">
+                {t('allProducts.productCount', { count: formatNumber(sortedProducts.length) })}
+              </span>
+            </div>
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setShowSortDropdown(!showSortDropdown)}
-                className="flex items-center gap-1 text-[12px] font-normal text-black hover:underline"
+                className="flex items-center gap-1.5 text-[14px] font-normal text-black hover:underline"
                 aria-haspopup="listbox"
                 aria-expanded={showSortDropdown}
               >
                 {t('allProducts.sortBy', { option: t(SORT_OPTIONS.find(o => o.value === sortBy)?.labelKey) })}
-                <ChevronDown size={12} strokeWidth={2} className="text-black" />
+                <ChevronDown size={14} strokeWidth={2} className="text-black" />
               </button>
               {showSortDropdown && (
                 <ul
-                  className="absolute start-0 top-full mt-1 min-w-[180px] bg-white border border-[#E5E5E5] shadow-lg z-20 rounded-[4px] overflow-hidden"
+                  className="absolute start-0 top-full mt-1 min-w-[190px] bg-white border border-[#E5E5E5] shadow-lg z-20 rounded-[4px] overflow-hidden"
                   role="listbox"
                 >
                   {SORT_OPTIONS.map((opt) => (
@@ -660,7 +374,7 @@ export default function AllProducts() {
                       <button
                         type="button"
                         onClick={() => handleSortChange(opt.value)}
-                        className={`w-full ps-3 pe-3 py-2 text-start text-[12px] font-normal text-black hover:bg-gray-50 ${sortBy === opt.value ? 'font-semibold' : ''}`}
+                        className={`w-full ps-3.5 pe-3.5 py-2.5 text-start text-[13.5px] font-normal text-black hover:bg-gray-50 ${sortBy === opt.value ? 'font-semibold' : ''}`}
                       >
                         {t(opt.labelKey)}
                       </button>
@@ -700,6 +414,17 @@ export default function AllProducts() {
           </div>
         </div>
       </div>
+
+      {/* Mobile Filter Drawer */}
+      <FilterDrawer
+        isOpen={isFilterDrawerOpen}
+        onClose={() => setIsFilterDrawerOpen(false)}
+        appliedValues={currentFilterValues}
+        onApply={handleFilterChange}
+        brandCounts={brandCounts}
+        priceBounds={{ min: MIN_PRICE, max: MAX_PRICE }}
+        resultCount={computeDraftCount}
+      />
     </div>
   )
 }

@@ -8,6 +8,7 @@ from django.utils.text import slugify
 from rest_framework import serializers
 
 from .models import (
+    ContactMessage,
     Coupon,
     Customer,
     CustomerAddress,
@@ -884,3 +885,42 @@ class AdminProductReviewSerializer(serializers.ModelSerializer):
             "adminReply",
             "createdAt",
         ]
+
+
+# =============================================================================
+# Contact Message & Customer Club Serializers
+# =============================================================================
+
+def normalize_iranian_phone(value: str) -> str:
+    persian_digits = "۰۱۲۳۴۵۶۷۸۹"
+    arabic_digits = "٠١٢٣٤٥٦٧٨٩"
+    cleaned = str(value or "").strip()
+    for i in range(10):
+        cleaned = cleaned.replace(persian_digits[i], str(i)).replace(arabic_digits[i], str(i))
+    digits = "".join(c for c in cleaned if c.isdigit())
+    if digits.startswith("98") and len(digits) == 12:
+        digits = "0" + digits[2:]
+    elif digits.startswith("0098") and len(digits) == 14:
+        digits = "0" + digits[4:]
+    elif digits and not digits.startswith("0") and len(digits) == 10 and digits.startswith("9"):
+        digits = "0" + digits
+    return digits
+
+
+class ContactMessageCreateSerializer(serializers.Serializer):
+    name = serializers.CharField(max_length=150)
+    phone = serializers.CharField(max_length=20)
+    message = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_name(self, value):
+        val = value.strip()
+        if not val:
+            raise serializers.ValidationError("لطفاً نام خود را وارد کنید.")
+        return val
+
+    def validate_phone(self, value):
+        normalized = normalize_iranian_phone(value)
+        if not re.fullmatch(r"09\d{9}", normalized):
+            raise serializers.ValidationError("شماره موبایل وارد شده معتبر نیست (مثال: ۰۹۱۲۱۲۳۴۵۶۷).")
+        return normalized
+

@@ -3,7 +3,7 @@ from django.contrib import admin
 from .models import (
     Product, ProductImage, ProductSize,
     StoreSettings, Coupon, Customer, CustomerAddress,
-    Order, OrderItem, OrderStatusLog,
+    Order, OrderItem, OrderStatusLog, ContactMessage,
 )
 
 
@@ -205,3 +205,17 @@ class OrderStatusLogAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+# ---------------------------------------------------------------------------
+# ContactMessage / Customer Club
+# ---------------------------------------------------------------------------
+
+@admin.register(ContactMessage)
+class ContactMessageAdmin(admin.ModelAdmin):
+    list_display = ('name', 'phone', 'is_handled', 'created_at', 'customer')
+    list_filter = ('is_handled', 'created_at')
+    search_fields = ('name', 'phone', 'message', 'notes')
+    list_editable = ('is_handled',)
+    readonly_fields = ('created_at',)
+

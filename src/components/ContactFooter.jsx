@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MapPin, ExternalLink } from 'lucide-react'
+import { MapPin, ExternalLink, Check } from 'lucide-react'
+import { submitContactMessage } from '../api/contact'
 
 // Default shop location coordinates / query - easily customizable
 const SHOP_LOCATION = {
@@ -34,7 +35,8 @@ const smudgeStyle = (left, top, size, opacity = 0.06) => ({
 })
 
 export default function ContactFooter({ mapConfig = SHOP_LOCATION }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
+  const isRTL = i18n.language === 'fa'
   const [formData, setFormData] = useState({
     name: '',
     phone: '',
@@ -55,9 +57,9 @@ export default function ContactFooter({ mapConfig = SHOP_LOCATION }) {
 
   const validateForm = () => {
     const newErrors = {}
-    if (!formData.name.trim()) newErrors.name = 'Name is required'
-    if (!formData.phone.trim()) newErrors.phone = 'Phone number is required'
-    if (!formData.agreed) newErrors.agreed = 'You must agree to the privacy policy'
+    if (!formData.name.trim()) newErrors.name = isRTL ? 'لطفاً نام خود را وارد کنید' : 'Name is required'
+    if (!formData.phone.trim()) newErrors.phone = isRTL ? 'لطفاً شماره تلفن خود را وارد کنید' : 'Phone number is required'
+    if (!formData.agreed) newErrors.agreed = isRTL ? 'لطفاً با ذخیره شدن اطلاعات موافقت کنید' : 'You must agree to the privacy policy'
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }
@@ -70,12 +72,16 @@ export default function ContactFooter({ mapConfig = SHOP_LOCATION }) {
     setSubmitStatus(null)
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      await submitContactMessage({
+        name: formData.name,
+        phone: formData.phone,
+      })
       setSubmitStatus('success')
       setFormData({ name: '', phone: '', agreed: false })
       setErrors({})
-    } catch {
+    } catch (err) {
       setSubmitStatus('error')
+      setErrors((prev) => ({ ...prev, submit: err.message }))
     } finally {
       setIsSubmitting(false)
     }
@@ -108,6 +114,8 @@ const handleChange = (field, value) => {
   const emailValueStyle = {
     ...valueStyle,
     color: '#000',
+    overflowWrap: 'break-word',
+    wordBreak: 'break-word',
   }
 
   // Read arrays from translation files with returnObjects: true
@@ -387,24 +395,52 @@ const handleChange = (field, value) => {
               </div>
 
               {/* Checkbox + Privacy Policy */}
-              <label className="flex flex-row-reverse items-center justify-start gap-2" style={{ marginTop: '14px', cursor: 'pointer', direction: 'rtl' }}>
-                <span style={{ fontSize: '10px', fontWeight: 400, letterSpacing: '-0.03em', lineHeight: '1.3', color: '#000' }}>
-                  {t('contact.form.agree')}
-                  {' '}
-                  <a href="#" className="font-bold underline" style={{ fontWeight: 700 }}>
-                    {t('contact.form.privacyPolicy')}
-                  </a>
-                </span>
-                <input
-                  type="checkbox"
-                  checked={formData.agreed}
-                  onChange={(e) => handleChange('agreed', e.target.checked)}
-                  className="w-[14px] h-[14px] mt-[1px] flex-shrink-0 border border-black bg-transparent appearance-none cursor-pointer"
+              <div
+                className="flex items-center justify-start gap-2.5 mt-[14px] cursor-pointer select-none"
+                style={{ direction: 'rtl' }}
+                onClick={() => handleChange('agreed', !formData.agreed)}
+              >
+                <button
+                  type="button"
+                  role="checkbox"
+                  aria-checked={formData.agreed}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handleChange('agreed', !formData.agreed)
+                  }}
+                  className={`w-[16px] h-[16px] flex-shrink-0 border border-black flex items-center justify-center transition-colors cursor-pointer ${
+                    formData.agreed ? 'bg-black text-white' : 'bg-transparent hover:bg-black/5'
+                  }`}
                   style={{ borderRadius: 0 }}
                   disabled={isSubmitting}
                   aria-invalid={!!errors.agreed}
+                >
+                  {formData.agreed && <Check size={12} strokeWidth={3} className="text-white" />}
+                </button>
+                <input
+                  type="checkbox"
+                  id="contact-agreed"
+                  checked={formData.agreed}
+                  onChange={(e) => handleChange('agreed', e.target.checked)}
+                  className="sr-only"
+                  tabIndex={-1}
                 />
-              </label>
+                <span style={{ fontSize: '12px', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: '1.3', color: '#000' }}>
+                  {t('contact.form.agree')}
+                  {' '}
+                  <a
+                    href="#"
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                    }}
+                    className="font-bold underline hover:text-[#444] transition-colors"
+                    style={{ fontWeight: 700 }}
+                  >
+                    {t('contact.form.privacyPolicy')}
+                  </a>
+                </span>
+              </div>
               {errors.agreed && (
                 <p className="text-red-600 text-xs mt-1 text-end" style={{ fontSize: '11px' }}>
                   {errors.agreed}
@@ -426,14 +462,18 @@ const handleChange = (field, value) => {
                 onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#222' }}
                 onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#000' }}
               >
-                {isSubmitting ? 'Sending...' : t('contact.form.sendRequest')}
+                {isSubmitting ? (isRTL ? 'در حال ارسال...' : 'Sending...') : t('contact.form.sendRequest')}
               </button>
 
               {submitStatus === 'success' && (
-                <p className="mt-[12px] text-green-700 text-[13px] text-end">Your message has been sent successfully!</p>
+                <p className="mt-[12px] text-green-700 text-[13px] text-end font-medium">
+                  {isRTL ? 'درخواست شما ثبت شد و به باشگاه مشتریان اضافه شدید!' : 'Your message has been sent successfully!'}
+                </p>
               )}
               {submitStatus === 'error' && (
-                <p className="mt-[12px] text-red-600 text-[13px] text-end">Something went wrong. Please try again.</p>
+                <p className="mt-[12px] text-red-600 text-[13px] text-end">
+                  {errors.submit || (isRTL ? 'خطایی رخ داد. لطفاً دوباره تلاش کنید.' : 'Something went wrong. Please try again.')}
+                </p>
               )}
             </form>
           </div>
@@ -443,36 +483,49 @@ const handleChange = (field, value) => {
       <style jsx>{`
         @media (max-width: 899px) {
           .contact-grid {
-            display: flex !important;
-            flex-direction: column !important;
+            display: grid !important;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+            grid-template-areas:
+              "info    info"
+              "address phone"
+              "hours   email"
+              "form    form" !important;
+            grid-template-rows: auto auto auto auto !important;
+            column-gap: 20px !important;
+            row-gap: 24px !important;
             min-height: auto !important;
             padding-top: 0 !important;
           }
           .contact-grid > div {
-            margin-top: 28px !important;
+            margin-top: 0 !important;
             grid-column: auto !important;
             grid-row: auto !important;
             align-self: auto !important;
             max-width: none !important;
+            min-width: 0 !important;
             width: 100% !important;
+            word-break: break-word;
           }
           .contact-grid > div:first-child {
-            margin-top: 0 !important;
+            grid-area: info !important;
           }
           .contact-grid > div:nth-child(2) {
-            margin-top: 28px !important;
+            grid-area: address !important;
+            margin-top: 8px !important;
           }
           .contact-grid > div:nth-child(3) {
-            margin-top: 28px !important;
+            grid-area: phone !important;
+            margin-top: 8px !important;
           }
           .contact-grid > div:nth-child(4) {
-            margin-top: 28px !important;
+            grid-area: hours !important;
           }
           .contact-grid > div:nth-child(5) {
-            margin-top: 28px !important;
+            grid-area: email !important;
           }
           .contact-grid > div:nth-child(6) {
-            margin-top: 28px !important;
+            grid-area: form !important;
+            margin-top: 14px !important;
           }
           .contact-map-block > div:nth-child(2) {
             height: 240px !important;

@@ -19,6 +19,7 @@ from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from rest_framework.views import APIView
 
 from .models import (
+    ContactMessage,
     Coupon,
     Customer,
     CustomerAddress,
@@ -35,6 +36,7 @@ from .models import (
 )
 from .permissions import IsStaffUser
 from .serializers import (
+    ContactMessageCreateSerializer,
     AdminCouponCreateUpdateSerializer,
     AdminCouponSerializer,
     AdminCustomerSerializer,
@@ -1383,3 +1385,75 @@ class AdminExpirePendingOrdersView(APIView):
             "message": f"{count} سفارش منقضی لغو و موجودی به انبار بازگردانده شد." if count else "هیچ سفارش منقضی‌ای یافت نشد.",
             "scheduler": status_info,
         })
+
+
+class ContactMessageCreateView(APIView):
+    """
+    POST /api/contact/
+    Allows a customer to join the Customer Club / send a contact request.
+    1. Registers or updates the Customer profile.
+    2. Saves the ContactMessage in database for Admin review.
+    3. Sends notification SMS to Admin (if ADMIN_PHONE_NUMBER is configured).
+    4. Sends welcome/confirmation SMS to the Customer.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = ContactMessageCreateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        name = serializer.validated_data["name"]
+        clean_phone = serializer.validated_data["phone"]
+        user_message = serializer.validated_data.get("message") or "عضویت در باشگاه مشتریان و درخواست تماس از طریق فوتر سایت"
+
+        # 1. Register/Update in Customer Club (Customer model)
+        parts = name.strip().split(maxsplit=1)
+        first_name = parts[0]
+        last_name = parts[1] if len(parts) > 1 else ""
+
+        customer, created = Customer.objects.get_or_create(
+            phone=clean_phone,
+            defaults={
+                "first_name": first_name,
+                "last_name": last_name,
+            }
+        )
+        if not created and not customer.first_name and first_name:
+            customer.first_name = first_name
+            customer.last_name = last_name
+            customer.save(update_fields=["first_name", "last_name"])
+
+        # 2. Save ContactMessage
+        contact_msg = ContactMessage.objects.create(
+            name=name.strip(),
+            phone=clean_phone,
+            message=user_message,
+            customer=customer,
+        )
+
+        # 3. Notification SMS to Admin
+        import logging
+        logger = logging.getLogger(__name__)
+        from shop.services.sms import send_sms
+        admin_phone = getattr(settings, 'ADMIN_PHONE_NUMBER', '')
+        if admin_phone:
+            admin_text = f"کفش لاچین: درخواست جدید در باشگاه مشتریان ثبت شد.\nنام: {name.strip()}\nتلفن: {clean_phone}"
+            try:
+                send_sms(admin_phone, admin_text)
+            except Exception as exc:
+                logger.error(f"Failed to send admin notification SMS: {exc}")
+
+        # 4. Confirmation / Welcome SMS to Customer
+        from shop.services.sms import send_customer_club_welcome_sms
+        try:
+            send_customer_club_welcome_sms(clean_phone, name=name.strip())
+        except Exception as exc:
+            logger.error(f"Failed to send customer confirmation SMS: {exc}")
+
+        return Response({
+            "status": "success",
+            "message": "اطلاعات شما با موفقیت ثبت شد و به زودی با شما تماس خواهیم گرفت.",
+            "customerId": customer.id,
+            "messageId": contact_msg.id,
+        }, status=status.HTTP_201_CREATED)

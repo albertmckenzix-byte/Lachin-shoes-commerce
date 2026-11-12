@@ -71,3 +71,12 @@ def send_order_shipped_sms(order) -> dict:
         f"کد رهگیری پستی: {postal_code}"
     )
     return send_sms(order.phone, msg)
+
+
+def send_customer_club_welcome_sms(phone: str, name: str = "") -> dict:
+    msg = (
+        "به باشگاه مشتریان لاچین خوش آمدید!\n"
+        "از اینکه لاچین رو برای انتخاب استایل خودتون انتخاب کردید، خوشحالیم! \n"
+        "هم اکنون،  شما عضوی از خانواده لاچین هستید و میتونید منتظر دریافت تخفیفهای ویژه، پیشنهادهای اختصاصی و جدیدترین آفرهای لاچین باشید."
+    )
+    return send_sms(phone, msg)

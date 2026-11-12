@@ -178,3 +178,29 @@ class WishlistItem(models.Model):
 
     def __str__(self):
         return f"{self.customer.phone} -> {self.product.name}"
+
+
+class ContactMessage(models.Model):
+    name = models.CharField(max_length=150, verbose_name="نام و نام خانوادگی")
+    phone = models.CharField(max_length=20, verbose_name="شماره تماس")
+    message = models.TextField(blank=True, default="درخواست عضویت در باشگاه مشتریان و تماس", verbose_name="پیام")
+    is_handled = models.BooleanField(default=False, verbose_name="پیگیری شد؟")
+    notes = models.TextField(blank=True, default="", verbose_name="یادداشت مدیر")
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="contact_messages",
+        verbose_name="مشتری مرتبط"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاریخ ثبت")
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "پیام تماس / باشگاه مشتریان"
+        verbose_name_plural = "پیام‌های تماس / باشگاه مشتریان"
+
+    def __str__(self):
+        return f"{self.name} ({self.phone})"
+

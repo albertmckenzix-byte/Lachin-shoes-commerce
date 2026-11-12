@@ -20,7 +20,7 @@ export default function PromoBanner() {
   return (
     <>
       <section
-        className="relative z-10 w-full overflow-hidden h-[560px] md:h-[clamp(620px,85vh,900px)] bg-[#E9CBA6]"
+        className="relative z-10 w-full overflow-hidden max-md:min-h-[640px] h-[560px] md:h-[clamp(620px,85vh,900px)] bg-[#E9CBA6]"
         style={{ clipPath: 'inset(0)' }}
       >
         <img
@@ -45,7 +45,7 @@ export default function PromoBanner() {
         </div>
 
         {/* Floating Featured Product Card */}
-        <div className="absolute start-4 end-4 bottom-4 md:start-auto md:end-[110px] md:bottom-[56px] z-40 flex justify-center md:block">
+        <div className="md:absolute md:end-[110px] md:bottom-[56px] z-40">
           <FeaturedProductCard product={classicComfort} variant="light" />
         </div>
       </section>

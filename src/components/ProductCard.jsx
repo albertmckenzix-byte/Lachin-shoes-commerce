@@ -1,9 +1,7 @@
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 import { Heart } from 'lucide-react'
 import { formatPrice } from '../utils/format'
-import { useCart } from '../contexts/CartContext'
 import { useWishlist } from '../contexts/WishlistContext'
 import { getProductImage } from '../utils/productImages'
 
@@ -16,7 +14,6 @@ export function getBadgeLabel(badge, t) {
 
 export default function ProductCard({ product, variant = 'default' }) {
   const { t } = useTranslation()
-  const { addItem } = useCart()
   const { isFavorite, toggleFavorite } = useWishlist()
   const { nameKey, price, oldPrice, badge, slug } = product
   const isFav = isFavorite(slug || product.id)
@@ -24,18 +21,6 @@ export default function ProductCard({ product, variant = 'default' }) {
   const imageUrl = getProductImage(product)
   const displayName = product.name || t(nameKey)
   const badgeLabel = getBadgeLabel(badge, t)
-
-  const [added, setAdded] = useState(false)
-
-  const handleAddToCart = (e) => {
-    e.stopPropagation()
-    addItem(product)
-    setAdded(true)
-    setTimeout(() => setAdded(false), 1500)
-  }
-
-  const listingClasses = 'text-[10px] py-[4px]'
-  const defaultClasses = 'text-[11px] py-[6px]'
 
   return (
     <div className="group block w-full min-w-0">
@@ -72,24 +57,21 @@ export default function ProductCard({ product, variant = 'default' }) {
             />
           </button>
         </div>
-        <h3 className={isListing ? 'mt-[14px] text-[11px] font-semibold uppercase tracking-[0.01em] text-black truncate' : 'mt-[14px] text-[12px] font-semibold uppercase tracking-[0.01em] text-black truncate'}>
+        <h3
+          dir="ltr"
+          className="mt-[14px] text-[13px] sm:text-[14px] font-semibold uppercase tracking-[0.01em] text-black truncate text-center"
+        >
           {displayName}
         </h3>
+        <div className="mt-[6px] flex items-center justify-center gap-2">
+          <span className="text-[14px] sm:text-[15px] font-medium text-black">{formatPrice(price)}</span>
+          {oldPrice && (
+            <span className="text-[#8a8a8a] line-through text-[13px] sm:text-[14px]">
+              {formatPrice(oldPrice)}
+            </span>
+          )}
+        </div>
       </Link>
-      <div className="mt-[6px] flex items-center gap-2">
-        <span className={isListing ? 'text-[12px] text-black' : 'text-[14px] text-black'}>{formatPrice(price)}</span>
-        {oldPrice && (
-          <span className={isListing ? 'text-[#8a8a8a] line-through text-[12px]' : 'text-[#8a8a8a] line-through text-[14px]'}>
-            {formatPrice(oldPrice)}
-          </span>
-        )}
-      </div>
-      <button
-        className={`mt-[8px] pill w-full sm:w-auto ${isListing ? listingClasses : defaultClasses}`}
-        onClick={handleAddToCart}
-      >
-        {added ? t('products.added') : t('products.addToCart')}
-      </button>
     </div>
   )
 }

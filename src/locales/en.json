@@ -233,6 +233,10 @@
     "searchResults": "Search results for \"{{term}}\"",
     "clearSearch": "Clear search",
     "filterAndBrowse": "Filter and browse",
+    "filter": "Filters",
+    "filterDrawerTitle": "Product Filters",
+    "apply": "Apply",
+    "confirm": "Apply",
     "breadcrumb": "Breadcrumb",
     "categoriesLabel": "Categories"
   },

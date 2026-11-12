@@ -8,7 +8,7 @@ export default function Hero() {
 
   return (
     <section
-      className="relative h-[calc(100vh-22px)] min-h-[600px] max-h-[900px] w-full overflow-hidden"
+      className="relative h-[calc(100vh-22px)] min-h-[600px] max-md:min-h-[640px] max-h-[900px] w-full overflow-hidden"
       style={{ clipPath: 'inset(0)' }}
     >
       <img
@@ -42,7 +42,7 @@ export default function Hero() {
       </div>
 
       {/* Floating Featured Product Card */}
-      <div className="absolute start-4 end-4 bottom-4 md:start-auto md:end-[110px] md:bottom-[66px] z-40 flex justify-center md:block">
+      <div className="md:absolute md:end-[110px] md:bottom-[66px] z-40">
         <FeaturedProductCard variant="light" />
       </div>
     </section>
